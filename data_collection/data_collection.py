@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 import time
 import logging
 from pynput import keyboard
@@ -14,8 +15,8 @@ from lerobot.datasets.utils import hw_to_dataset_features
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ def main():
 
     logger.info(f"Creating dataset: {args.hf_username}/{args.repo_id}")
     dataset = LeRobotDataset.create(
-        repo_id=f"{args.hf_username}/{args.repo_id}",
+        repo_id=f"{args.hf_username}/{args.repo_id}-{uuid.uuid4()}",
         fps=30,
         features={**action_features, **obs_features},
         robot_type=follower.name,
@@ -139,29 +140,38 @@ def main():
     recording = False
     frame_count = 0
 
-    def on_enter():
-        nonlocal recording, frame_count
-        if not recording:
-            recording = True
-            frame_count = 0
-            logger.info("=== RECORDING STARTED ===")
-        else:
-            recording = False
-            dataset.save_episode()
-            logger.info(f"=== RECORDING STOPPED === (Saved {frame_count} frames)")
-            frame_count = 0
+    def _on_press(key):
 
-    keyboard.on_press_key("enter", lambda _: on_enter())
-    logger.info("Press ENTER to start/stop recording. Press Ctrl+C to exit and upload dataset.")
+        nonlocal recording, frame_count
+
+        if key == keyboard.Key.enter:
+            if not recording:
+                recording = True
+                frame_count = 0
+                logger.info("=== RECORDING STARTED ===")
+            else:
+                recording = False
+                dataset.save_episode()
+                logger.info(f"=== RECORDING STOPPED === (Saved {frame_count} frames)")
+                frame_count = 0
+
+    listener = keyboard.Listener(on_press=_on_press)
+    listener.start()
+
+    logger.info(
+        "Press ENTER to start/stop recording. Press Ctrl+C to exit and upload dataset."
+    )
 
     logger.info("Starting teleoperation loop at 30 Hz...")
 
     while True:
         try:
-            obs = leader.get_observation()
-            follower.send_action(obs)
+            action = leader.get_action()
+            follower.send_action(action)
 
             if recording:
+                obs = follower.get_observation()
+
                 dataset.add_frame()
                 frame_count += 1
 
@@ -178,7 +188,8 @@ def main():
             logger.info("Disconnecting from follower robot...")
             follower.disconnect()
             logger.info("Pushing dataset to Hugging Face Hub...")
-            dataset.push_to_hub()
+            dataset.finalize()
+            # dataset.push_to_hub()
             logger.info("Dataset uploaded successfully. Exiting.")
             return
         except Exception as e:
@@ -190,6 +201,8 @@ def main():
             except Exception as cleanup_error:
                 logger.error(f"Error during cleanup: {cleanup_error}")
             raise
+        finally:
+            listener.stop()
 
 
 if __name__ == "__main__":
