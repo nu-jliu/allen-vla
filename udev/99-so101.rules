@@ -1,0 +1,19 @@
+# udev rules for SO101 Robot Arms
+# Device: QinHeng Electronics USB Single Serial (ID 1a86:55d3)
+# This file creates consistent device names and permissions for SO101 arms
+
+# Method 1: Using serial numbers to distinguish leader from follower
+# Uncomment and replace LEADER_SERIAL and FOLLOWER_SERIAL with actual values
+# Find serial numbers using: udevadm info -a -n /dev/ttyACM0 | grep serial
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", ATTRS{serial}=="LEADER_SERIAL", SYMLINK+="so101_leader", MODE="0666", GROUP="dialout"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", ATTRS{serial}=="FOLLOWER_SERIAL", SYMLINK+="so101_follower", MODE="0666", GROUP="dialout"
+
+# Method 2: Using USB port location to distinguish leader from follower
+# Find port location using: udevadm info -a -n /dev/ttyACM0 | grep KERNELS
+# Uncomment and replace the KERNELS values with your actual USB port paths
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", KERNELS=="1-1.1", SYMLINK+="so101_leader", MODE="0666", GROUP="dialout"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", KERNELS=="1-1.2", SYMLINK+="so101_follower", MODE="0666", GROUP="dialout"
+
+# Method 3: Simple permissions for all SO101 devices (RECOMMENDED TO START)
+# This gives proper permissions but doesn't create specific symlinks
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", MODE="0666", GROUP="dialout"

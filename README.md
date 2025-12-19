@@ -9,6 +9,42 @@ This project aims to explore and benchmark different VLA models for robotic mani
 1. **Teleoperation & Data Collection Pipeline**: Setup LeRobot with SoArm for teleoperating the robot and collecting high-quality demonstration datasets
 2. **Training & Deployment Pipeline**: Implement, train, and deploy various VLA models (π0, π0.5, ACT, etc.) and evaluate their performance
 
+## Usage
+
+### Teleoperation
+
+Run the teleoperation script to control the follower arm using the leader arm:
+
+```bash
+python teleop/teleop.py
+```
+
+The script accepts the following command-line arguments:
+
+- `--leader-port`: Serial port for the leader arm (default: `/dev/ttyACM0`)
+- `--leader-id`: ID for the leader arm (default: `my_leader`)
+- `--follower-port`: Serial port for the follower arm (default: `/dev/ttyACM1`)
+- `--follower-id`: ID for the follower arm (default: `my_follower`)
+
+**Example with custom ports:**
+
+```bash
+python teleop/teleop.py --leader-port /dev/ttyACM2 --follower-port /dev/ttyACM3
+```
+
+**Example with custom IDs:**
+
+```bash
+python teleop/teleop.py --leader-id leader_arm --follower-id follower_arm
+```
+
+The teleoperation interface will:
+1. Connect to both leader and follower arms
+2. Disable torque on the leader arm (so you can move it by hand)
+3. Mirror the leader arm's movements on the follower arm in real-time
+4. Print observation data to the console
+5. Run until interrupted with `Ctrl+C`
+
 ## Todo List
 
 ### Phase 1: Teleoperation & Data Collection

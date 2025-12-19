@@ -137,10 +137,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "lerobot", extra = ["feetech"] },
+    { name = "pynput" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "lerobot", extras = ["feetech"], specifier = ">=0.4.2" }]
+requires-dist = [
+    { name = "lerobot", extras = ["feetech"], specifier = ">=0.4.2" },
+    { name = "pynput", specifier = ">=1.8.1" },
+]
 
 [[package]]
 name = "annotated-types"
