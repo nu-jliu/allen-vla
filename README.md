@@ -1,4 +1,4 @@
-# allen-vla
+# Allen's Awesome Vision-Language-Action (VLA) Models
 
 Repository to run experiments with various VLA (Vision-Language-Action) models on SoArm-101.
 
