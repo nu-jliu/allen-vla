@@ -154,8 +154,8 @@ def main():
             if is_recording:
                 obs = follower.get_observation()
 
-                logger.info(f"Observation: {pprint.pformat(obs, indent=2)}")
-                logger.info(f"Action: {pprint.pformat(action, indent=2)}")
+                # logger.info(f"Observation: {pprint.pformat(obs, indent=2)}")
+                # logger.info(f"Action: {pprint.pformat(action, indent=2)}")
 
                 # Construct frame according to dataset features
                 # Action: convert dict of motor positions to numpy array
