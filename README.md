@@ -9,6 +9,110 @@ This project aims to explore and benchmark different VLA models for robotic mani
 1. **Teleoperation & Data Collection Pipeline**: Setup LeRobot with SoArm for teleoperating the robot and collecting high-quality demonstration datasets
 2. **Training & Deployment Pipeline**: Implement, train, and deploy various VLA models (π0, π0.5, ACT, etc.) and evaluate their performance
 
+## Installation
+
+### Prerequisites
+
+- Python 3.12 or higher
+- [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
+
+### 1. Install uv
+
+If you don't have uv installed, install it using:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Or on macOS/Linux using brew:
+
+```bash
+brew install uv
+```
+
+### 2. Clone the Repository
+
+```bash
+git clone https://github.com/jliu6718/allen-vla.git
+cd allen-vla
+```
+
+### 3. Install Dependencies
+
+```bash
+uv sync
+```
+
+This will create a virtual environment and install all dependencies specified in `pyproject.toml`:
+- huggingface-hub (>=0.35.3)
+- lerobot[feetech] (>=0.4.2)
+- opencv-python (>=4.12.0.88)
+- pynput (>=1.8.1)
+- uuid (>=1.30)
+
+### 4. Activate the Virtual Environment
+
+```bash
+source .venv/bin/activate
+```
+
+Or if you're using uv to run commands directly:
+
+```bash
+uv run python <script>.py
+```
+
+## Hardware Setup
+
+### Configure Udev Rules for SO101 Robot Arms
+
+To access the robot arms without sudo and with consistent device names:
+
+#### 1. Install Udev Rules
+
+```bash
+sudo cp udev/99-so101.rules /etc/udev/rules.d/
+```
+
+#### 2. Add Your User to the dialout Group
+
+```bash
+sudo usermod -a -G dialout $USER
+```
+
+**Important**: Log out and log back in for the group change to take effect.
+
+#### 3. Reload Udev Rules
+
+```bash
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+#### 4. Test Hardware Connection
+
+Disconnect and reconnect your SO101 arms. You should now be able to access them without `sudo`.
+
+For detailed hardware setup instructions including creating symbolic links for consistent device naming, see [udev/README.md](udev/README.md).
+
+## Deployment
+
+### Deploy to Jetson Device
+
+To deploy this project to a remote Jetson device:
+
+```bash
+./scripts/deploy_jetson.bash <user@host>
+```
+
+**Example:**
+
+```bash
+./scripts/deploy_jetson.bash allen@jetson
+```
+
+This script uses rsync to sync all project files (excluding virtual environments and cache files) to the remote Jetson at `/home/allen/.ws/via_ws/`.
+
 ## Usage
 
 ### Teleoperation
@@ -16,7 +120,13 @@ This project aims to explore and benchmark different VLA models for robotic mani
 Run the teleoperation script to control the follower arm using the leader arm:
 
 ```bash
-python teleop/teleop.py
+python teleop.py
+```
+
+Or using uv:
+
+```bash
+uv run python teleop.py
 ```
 
 The script accepts the following command-line arguments:
@@ -25,17 +135,18 @@ The script accepts the following command-line arguments:
 - `--leader-id`: ID for the leader arm (default: `my_leader`)
 - `--follower-port`: Serial port for the follower arm (default: `/dev/ttyACM1`)
 - `--follower-id`: ID for the follower arm (default: `my_follower`)
+- `--frequency`: Control frequency in Hz (default: `20.0`)
 
 **Example with custom ports:**
 
 ```bash
-python teleop/teleop.py --leader-port /dev/ttyACM2 --follower-port /dev/ttyACM3
+python teleop.py --leader-port /dev/ttyACM2 --follower-port /dev/ttyACM3
 ```
 
 **Example with custom IDs:**
 
 ```bash
-python teleop/teleop.py --leader-id leader_arm --follower-id follower_arm
+python teleop.py --leader-id leader_arm --follower-id follower_arm
 ```
 
 The teleoperation interface will:
@@ -50,7 +161,13 @@ The teleoperation interface will:
 Collect demonstration datasets for training VLA models:
 
 ```bash
-python data_collection/data_collection.py
+python data_collection.py
+```
+
+Or using uv:
+
+```bash
+uv run python data_collection.py
 ```
 
 The script accepts the following command-line arguments:
@@ -61,11 +178,19 @@ The script accepts the following command-line arguments:
 - `--follower-id`: ID for the follower arm (default: `my_follower`)
 - `--hf-username`: Hugging Face username (default: `jliu6718`)
 - `--repo-id`: Dataset repository name (default: `lerobot-so101`)
+- `--hz`: Control loop frequency in Hz (default: `30`)
+- `--push`: Push dataset to Hugging Face Hub after collection (flag)
 
 **Example:**
 
 ```bash
-python data_collection/data_collection.py --hf-username your_username --repo-id my_dataset
+python data_collection.py --hf-username your_username --repo-id my_dataset
+```
+
+**Example with push to Hugging Face Hub:**
+
+```bash
+python data_collection.py --hf-username your_username --repo-id my_dataset --push
 ```
 
 The data collection interface will:
