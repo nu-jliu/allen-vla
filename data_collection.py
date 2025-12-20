@@ -63,13 +63,21 @@ def main():
         help="Hugging Face username",
     )
     parser.add_argument(
-        "--repo-id", type=str, default="lerobot-so101", help="Name of the dataset repo"
+        "--repo-id",
+        type=str,
+        default="lerobot-so101",
+        help="Name of the dataset repo",
     )
     parser.add_argument(
         "--hz",
         type=int,
         default=30,
         help="Control loop frequency in Hz (default: 30)",
+    )
+    parser.add_argument(
+        "--push",
+        action="store_true",
+        help="Push dataset to Hugging Face Hub after collection",
     )
     args = parser.parse_args()
 
@@ -142,6 +150,7 @@ def main():
         fps=args.hz,
         features={**action_features, **obs_features},
         robot_type=follower.name,
+        use_videos=True,
     )
     print(dataset.features)
 
@@ -160,6 +169,7 @@ def main():
     recording = False
     frame_count = 0
     running = True
+    recording_lock = threading.Lock()
 
     def keyboard_thread():
         nonlocal recording, frame_count, running
@@ -167,17 +177,27 @@ def main():
             try:
                 logger.info("Press ENTER to start/stop recording...")
                 input()
-                if not recording:
-                    recording = True
-                    frame_count = 0
-                    logger.info("=== RECORDING STARTED ===")
-                else:
-                    recording = False
-                    dataset.save_episode()
-                    logger.info(
-                        f"=== RECORDING STOPPED === (Saved {frame_count} frames)"
-                    )
-                    frame_count = 0
+                with recording_lock:
+                    logger.info("Handling keyboard ...")
+
+                    if not recording:
+                        recording = True
+                        frame_count = 0
+                        # Ensure episode buffer is properly initialized
+                        dataset.episode_buffer = dataset.create_episode_buffer()
+                        logger.info("=== RECORDING STARTED ===")
+                    else:
+                        recording = False
+                        if frame_count > 0:
+                            dataset.save_episode()
+                            logger.info(
+                                f"=== RECORDING STOPPED === (Saved {frame_count} frames)"
+                            )
+                        else:
+                            logger.info(
+                                "=== RECORDING STOPPED === (No frames captured)"
+                            )
+                        frame_count = 0
             except EOFError:
                 break
             except Exception as e:
@@ -203,7 +223,10 @@ def main():
             if not succ:
                 logger.warning("Failed to get image, skipping this loop")
 
-            if recording:
+            with recording_lock:
+                is_recording = recording
+
+            if is_recording:
                 obs = follower.get_observation()
 
                 pprint.pprint(obs, indent=2)
@@ -211,33 +234,36 @@ def main():
 
                 # Construct frame according to dataset features
                 # Action: convert dict of motor positions to numpy array
-                action_array = np.array(
-                    [action[name] for name in dataset.features["action"]["names"]],
-                    dtype=np.float32,
-                )
+                with recording_lock:
+                    action_array = np.array(
+                        [action[name] for name in dataset.features["action"]["names"]],
+                        dtype=np.float32,
+                    )
 
-                # Observation state: convert dict of motor positions to numpy array
-                obs_state_array = np.array(
-                    [
-                        obs[name]
-                        for name in dataset.features["observation.state"]["names"]
-                    ],
-                    dtype=np.float32,
-                )
+                    # Observation state: convert dict of motor positions to numpy array
+                    obs_state_array = np.array(
+                        [
+                            obs[name]
+                            for name in dataset.features["observation.state"]["names"]
+                        ],
+                        dtype=np.float32,
+                    )
 
-                frame = {
-                    "action": action_array,
-                    "observation.state": obs_state_array,
-                    "observation.images.cam_leader": image,
-                    "task": "soarm_grasp",
-                }
+                    frame = {
+                        "action": action_array,
+                        "observation.state": obs_state_array,
+                        "observation.images.cam_leader": image,
+                        "task": "soarm_grasp",
+                    }
 
-                dataset.add_frame(frame=frame)
-                frame_count += 1
+                    dataset.add_frame(frame=frame)
+
+                    frame_count += 1
+                    current_frame_count = frame_count
 
                 # Log progress every Hz frames (every 1 second)
-                if frame_count % args.hz == 0:
-                    logger.debug(f"Recording: {frame_count} frames captured")
+                if current_frame_count % args.hz == 0:
+                    logger.debug(f"Recording: {current_frame_count} frames captured")
 
             time.sleep(period)
 
@@ -248,10 +274,13 @@ def main():
             leader.disconnect()
             logger.info("Disconnecting from follower robot...")
             follower.disconnect()
-            logger.info("Pushing dataset to Hugging Face Hub...")
             dataset.finalize()
-            # dataset.push_to_hub()
-            logger.info("Dataset uploaded successfully. Exiting.")
+            if args.push:
+                logger.info("Pushing dataset to Hugging Face Hub...")
+                dataset.push_to_hub()
+                logger.info("Dataset uploaded successfully. Exiting.")
+            else:
+                logger.info("Dataset saved locally. Exiting.")
             return
         except Exception as e:
             logger.error(f"Error in teleoperation loop: {e}", exc_info=True)

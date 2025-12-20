@@ -136,6 +136,7 @@ name = "allen-vla"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "lerobot", extra = ["feetech"] },
     { name = "opencv-python" },
     { name = "pynput" },
@@ -144,6 +145,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "huggingface-hub", specifier = ">=0.35.3" },
     { name = "lerobot", extras = ["feetech"], specifier = ">=0.4.2" },
     { name = "opencv-python", specifier = ">=4.12.0.88" },
     { name = "pynput", specifier = ">=1.8.1" },

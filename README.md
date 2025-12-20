@@ -78,11 +78,11 @@ The data collection interface will:
 
 ## Todo List
 
-### Phase 1: Teleoperation & Data Collection
+### Phase 1: Teleoperation & Data Collection ✓
 - [x] Setup LeRobot environment and dependencies
 - [x] Configure SoArm-101 hardware integration with LeRobot
 - [x] Implement teleoperation interface
-- [ ] Setup camera(s) and sensor pipeline
+- [x] Setup camera(s) and sensor pipeline
 - [x] Develop data collection scripts
 - [x] Define data format and storage structure (using LeRobot dataset format)
 - [x] Test teleoperation and record sample demonstrations
