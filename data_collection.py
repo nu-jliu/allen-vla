@@ -1,4 +1,3 @@
-import os
 import pprint
 import uuid
 import time
@@ -8,54 +7,20 @@ import cv2
 import numpy as np
 
 from argparse import ArgumentParser
-from pathlib import Path
 
-from lerobot.robots.so101_follower import SO101Follower, SO101FollowerConfig
-from lerobot.teleoperators.so101_leader import SO101Leader, SO101LeaderConfig
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.datasets.utils import hw_to_dataset_features
 
 from utils import setup_logging
+from robot_utils import add_common_robot_args, initialize_robots
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
-HOME = os.getenv("HOME")
-CALIBRATION_DIR = os.path.join(
-    HOME,
-    ".cache",
-    "huggingface",
-    "lerobot",
-    "calibration",
-)
-
 
 def main():
-    parser = ArgumentParser(description="Teleoperation for SO101 robot")
-    parser.add_argument(
-        "--leader-port",
-        type=str,
-        default="/dev/ttyACM0",
-        help="Serial port for the leader arm (default: /dev/ttyACM0)",
-    )
-    parser.add_argument(
-        "--leader-id",
-        type=str,
-        default="my_leader",
-        help="ID for the leader arm (default: my_leader)",
-    )
-    parser.add_argument(
-        "--follower-port",
-        type=str,
-        default="/dev/ttyACM1",
-        help="Serial port for the follower arm (default: /dev/ttyACM1)",
-    )
-    parser.add_argument(
-        "--follower-id",
-        type=str,
-        default="my_follower",
-        help="ID for the follower arm (default: my_follower)",
-    )
+    parser = ArgumentParser(description="Data collection for SO101 robot")
+    parser = add_common_robot_args(parser)
     parser.add_argument(
         "--hf-username",
         type=str,
@@ -90,35 +55,7 @@ def main():
     logger.info(f"  Repo ID: {args.repo_id}")
     logger.info(f"  Control frequency: {args.hz} Hz")
 
-    leader_config = SO101LeaderConfig(
-        port=args.leader_port,
-        use_degrees=False,
-        id=args.leader_id,
-        calibration_dir=Path(
-            os.path.join(
-                CALIBRATION_DIR,
-                "teleoperators",
-                "so101_leader",
-            )
-        ),
-    )
-    follower_config = SO101FollowerConfig(
-        port=args.follower_port,
-        disable_torque_on_disconnect=True,
-        use_degrees=False,
-        id=args.follower_id,
-        calibration_dir=Path(
-            os.path.join(
-                CALIBRATION_DIR,
-                "robots",
-                "so101_follower",
-            )
-        ),
-    )
-
-    logger.info("Initializing leader and follower robots...")
-    leader = SO101Leader(config=leader_config)
-    follower = SO101Follower(config=follower_config)
+    leader, follower = initialize_robots(args, calibrate=True)
 
     cap = cv2.VideoCapture(0)
     # Get camera properties
@@ -153,18 +90,6 @@ def main():
         use_videos=True,
     )
     print(dataset.features)
-
-    logger.info("Connecting to leader robot and calibrating...")
-    leader.connect(calibrate=True)
-    logger.info("Leader robot connected successfully")
-
-    logger.info("Connecting to follower robot and calibrating...")
-    follower.connect(calibrate=True)
-    logger.info("Follower robot connected successfully")
-
-    # Disable torque on leader so it can be moved freely by hand
-    logger.info("Disabling torque on leader arm for manual control")
-    leader.bus.disable_torque()
 
     recording = False
     frame_count = 0
@@ -229,8 +154,8 @@ def main():
             if is_recording:
                 obs = follower.get_observation()
 
-                pprint.pprint(obs, indent=2)
-                pprint.pprint(action, indent=2)
+                logger.info(f"Observation: {pprint.pformat(obs, indent=2)}")
+                logger.info(f"Action: {pprint.pformat(action, indent=2)}")
 
                 # Construct frame according to dataset features
                 # Action: convert dict of motor positions to numpy array

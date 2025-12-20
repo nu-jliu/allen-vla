@@ -1,56 +1,20 @@
-import os
 import cv2
 import pprint
 import time
 import logging
 
 from argparse import ArgumentParser
-from pathlib import Path
-
-from lerobot.robots.so101_follower import SO101Follower, SO101FollowerConfig
-from lerobot.teleoperators.so101_leader import SO101Leader, SO101LeaderConfig
 
 from utils import setup_logging
+from robot_utils import add_common_robot_args, initialize_robots
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
-HOME = os.getenv("HOME")
-CALIBRATION_DIR = os.path.join(
-    HOME,
-    ".cache",
-    "huggingface",
-    "lerobot",
-    "calibration",
-)
-
 
 def main():
     parser = ArgumentParser(description="Teleoperation for SO101 robot")
-    parser.add_argument(
-        "--leader-port",
-        type=str,
-        default="/dev/ttyACM0",
-        help="Serial port for the leader arm (default: /dev/ttyACM0)",
-    )
-    parser.add_argument(
-        "--leader-id",
-        type=str,
-        default="my_leader",
-        help="ID for the leader arm (default: my_leader)",
-    )
-    parser.add_argument(
-        "--follower-port",
-        type=str,
-        default="/dev/ttyACM1",
-        help="Serial port for the follower arm (default: /dev/ttyACM1)",
-    )
-    parser.add_argument(
-        "--follower-id",
-        type=str,
-        default="my_follower",
-        help="ID for the follower arm (default: my_follower)",
-    )
+    parser = add_common_robot_args(parser)
     parser.add_argument(
         "--frequency",
         type=float,
@@ -59,43 +23,7 @@ def main():
     )
     args = parser.parse_args()
 
-    cap_leader = cv2.VideoCapture(0)
-    cap_follower = cv2.VideoCapture(2)
-
-    leader_config = SO101LeaderConfig(
-        port=args.leader_port,
-        use_degrees=False,
-        id=args.leader_id,
-        calibration_dir=Path(
-            os.path.join(
-                CALIBRATION_DIR,
-                "teleoperators",
-                "so101_leader",
-            )
-        ),
-    )
-    follower_config = SO101FollowerConfig(
-        port=args.follower_port,
-        disable_torque_on_disconnect=True,
-        use_degrees=False,
-        id=args.follower_id,
-        calibration_dir=Path(
-            os.path.join(
-                CALIBRATION_DIR,
-                "robots",
-                "so101_follower",
-            )
-        ),
-    )
-
-    leader = SO101Leader(config=leader_config)
-    follower = SO101Follower(config=follower_config)
-
-    leader.connect(calibrate=True)
-    follower.connect(calibrate=True)
-
-    # Disable torque on leader so it can be moved freely by hand
-    leader.bus.disable_torque()
+    leader, follower = initialize_robots(args, calibrate=True)
 
     rest_action = {
         "shoulder_pan.pos": 1.7148014440433172,
@@ -106,23 +34,15 @@ def main():
         "gripper.pos": 1.766304347826087,
     }
 
-    sleep_time = 1.0 / args.frequency
+    period = 1.0 / args.frequency
     while True:
         try:
-            obs = leader.get_action()
-            follower.send_action(obs)
+            act = leader.get_action()
+            follower.send_action(act)
 
-            succ_leader, img_leader = cap_leader.read()
-            succ_follower, img_follower = cap_follower.read()
+            logger.info(f"Action: {pprint.pformat(act, indent=2)}")
 
-            if not succ_follower or not succ_leader:
-                continue
-
-            print(img_leader.shape)
-            print(img_follower.shape)
-
-            pprint.pprint(obs, indent=2)
-            time.sleep(sleep_time)
+            time.sleep(period)
 
         except KeyboardInterrupt:
             follower.send_action(rest_action)
