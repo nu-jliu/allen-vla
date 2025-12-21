@@ -62,6 +62,19 @@ Or if you're using uv to run commands directly:
 uv run python <script>.py
 ```
 
+## Project Structure
+
+The codebase is organized as follows:
+
+- **`teleop.py`**: Teleoperation script for manual control of the follower arm using the leader arm
+- **`data_collection.py`**: Data collection pipeline for recording demonstration datasets
+- **`train_act.py`**: Training script for ACT (Action Chunking Transformer) policy
+- **`robot_utils.py`**: Shared utilities for robot initialization and configuration
+- **`utils.py`**: Common utilities including colored logging setup
+- **`udev/`**: Udev rules for consistent SO101 robot arm device naming
+
+All scripts use a common logging infrastructure with color-coded output for better visibility during operations.
+
 ## Hardware Setup
 
 ### Configure Udev Rules for SO101 Robot Arms
@@ -158,6 +171,8 @@ The teleoperation interface will:
 
 ### Data Collection
 
+![Data Collection Demo](assets/data_collection_demo.gif)
+
 Collect demonstration datasets for training VLA models:
 
 ```bash
@@ -201,6 +216,89 @@ The data collection interface will:
 5. Save episodes to the dataset
 6. Press `Ctrl+C` to finalize and upload the dataset to Hugging Face Hub
 
+### Training ACT Policy
+
+Train an ACT (Action Chunking Transformer) policy on your collected datasets:
+
+```bash
+python train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+```
+
+Or using uv:
+
+```bash
+uv run python train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+```
+
+#### Required Arguments
+
+- `--repo-id`: HuggingFace dataset repo ID (e.g., `jliu6718/lerobot-so101-abc123`)
+- `--output-dir`: Directory to save checkpoints and logs
+
+#### Training Hyperparameters
+
+- `--batch-size`: Training batch size (default: `8`)
+- `--steps`: Total training steps (default: `100,000`)
+- `--num-workers`: Number of dataloader workers (default: `4`)
+- `--seed`: Random seed for reproducibility (default: `1000`)
+
+#### ACT-Specific Hyperparameters
+
+- `--chunk-size`: Action prediction chunk size (default: `100`)
+- `--n-action-steps`: Number of action steps to execute per query (default: `100`)
+- `--lr`: Learning rate (default: `1e-5`)
+- `--kl-weight`: KL divergence loss weight for VAE (default: `10.0`)
+- `--dropout`: Dropout rate in transformer (default: `0.1`)
+
+#### Logging and Checkpointing
+
+- `--log-freq`: Log training metrics every N steps (default: `250`)
+- `--save-freq`: Save checkpoint every N steps (default: `5000`)
+- `--progress-bar` / `--no-progress-bar`: Show/hide tqdm progress bar (default: enabled)
+
+#### Weights & Biases Integration
+
+- `--wandb-enable`: Enable Weights & Biases logging
+- `--wandb-project`: Wandb project name (default: `soarm-act-training`)
+- `--wandb-entity`: Wandb entity/team name (optional)
+- `--wandb-notes`: Wandb run notes/description (optional)
+
+#### Advanced Options
+
+- `--resume`: Resume training from checkpoint in output-dir
+- `--push`: Push checkpoints to HuggingFace Hub
+- `--dataset-root`: Local dataset cache directory (optional)
+
+**Example with custom hyperparameters:**
+
+```bash
+python train_act.py \
+  --repo-id jliu6718/lerobot-so101-abc123 \
+  --output-dir ./outputs/act_experiment1 \
+  --batch-size 16 \
+  --steps 50000 \
+  --lr 5e-5 \
+  --wandb-enable \
+  --wandb-project my-act-training
+```
+
+**Example resuming from checkpoint:**
+
+```bash
+python train_act.py \
+  --repo-id jliu6718/lerobot-so101-abc123 \
+  --output-dir ./outputs/act_experiment1 \
+  --resume
+```
+
+The training script will:
+1. Load the dataset from HuggingFace Hub
+2. Initialize the ACT model with specified hyperparameters
+3. Train using LeRobot's full training infrastructure with Accelerate
+4. Save checkpoints at specified intervals
+5. Log metrics to console and optionally to Weights & Biases
+6. Support distributed training out of the box
+
 ## Todo List
 
 ### Phase 1: Teleoperation & Data Collection ✓
@@ -214,10 +312,10 @@ The data collection interface will:
 - [x] Create dataset management utilities (keyboard-controlled recording, HF Hub integration)
 
 ### Phase 2: Training & Deployment Pipeline
-- [ ] Setup training infrastructure (GPU environment, configs)
+- [x] Setup training infrastructure (GPU environment, configs)
+- [x] Implement ACT (Action Chunking Transformer) pipeline
 - [ ] Implement π0 model training pipeline
 - [ ] Implement π0.5 model training pipeline
-- [ ] Implement ACT (Action Chunking Transformer) pipeline
 - [ ] Add additional VLA models as needed
 - [ ] Create evaluation metrics and benchmarking scripts
 - [ ] Implement model deployment interface for SoArm
