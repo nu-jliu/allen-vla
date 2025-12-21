@@ -66,10 +66,12 @@ uv run python <script>.py
 
 The codebase is organized as follows:
 
+- **`calibration/`**: Robot calibration utilities
+  - **`calibrate.py`**: Calibration script for SO101 follower arm
 - **`data_collection/`**: Data collection pipeline for recording demonstration datasets
-  - **`main.py`**: Main data collection script
+  - **`collect.py`**: Main data collection script
 - **`teleop/`**: Teleoperation scripts for manual control
-  - **`main.py`**: Teleoperation script for controlling the follower arm using the leader arm
+  - **`teleop.py`**: Teleoperation script for controlling the follower arm using the leader arm
 - **`policy/`**: Policy training and inference
   - **`train/`**: Training scripts
     - **`train_act.py`**: Training script for ACT (Action Chunking Transformer) policy
@@ -133,18 +135,42 @@ This script uses rsync to sync all project files (excluding virtual environments
 
 ## Usage
 
-### Teleoperation
+### Calibration
 
-Run the teleoperation script to control the follower arm using the leader arm:
+Before using the robot, you may need to calibrate the follower arm to set the zero positions for each joint:
 
 ```bash
-python teleop/main.py
+python calibration/calibrate.py --port /dev/ttyACM0 --id my_follower
 ```
 
 Or using uv:
 
 ```bash
-uv run python teleop/main.py
+uv run python calibration/calibrate.py --port /dev/ttyACM0 --id my_follower
+```
+
+The script accepts the following command-line arguments:
+
+- `--port`: Serial port for the follower arm (required)
+- `--id`: Robot ID for the follower arm (required)
+
+The calibration process will:
+1. Connect to the follower arm
+2. Run the calibration routine to set joint zero positions
+3. Disconnect when complete
+
+### Teleoperation
+
+Run the teleoperation script to control the follower arm using the leader arm:
+
+```bash
+python teleop/teleop.py
+```
+
+Or using uv:
+
+```bash
+uv run python teleop/teleop.py
 ```
 
 The script accepts the following command-line arguments:
@@ -158,13 +184,13 @@ The script accepts the following command-line arguments:
 **Example with custom ports:**
 
 ```bash
-python teleop/main.py --leader-port /dev/ttyACM2 --follower-port /dev/ttyACM3
+python teleop/teleop.py --leader-port /dev/ttyACM2 --follower-port /dev/ttyACM3
 ```
 
 **Example with custom IDs:**
 
 ```bash
-python teleop/main.py --leader-id leader_arm --follower-id follower_arm
+python teleop/teleop.py --leader-id leader_arm --follower-id follower_arm
 ```
 
 The teleoperation interface will:
@@ -181,13 +207,13 @@ The teleoperation interface will:
 Collect demonstration datasets for training VLA models:
 
 ```bash
-python data_collection/main.py
+python data_collection/collect.py
 ```
 
 Or using uv:
 
 ```bash
-uv run python data_collection/main.py
+uv run python data_collection/collect.py
 ```
 
 The script accepts the following command-line arguments:
@@ -203,13 +229,13 @@ The script accepts the following command-line arguments:
 **Example:**
 
 ```bash
-python data_collection/main.py --repo-id your_username/my_dataset
+python data_collection/collect.py --repo-id your_username/my_dataset
 ```
 
 **Example with push to Hugging Face Hub:**
 
 ```bash
-python data_collection/main.py --repo-id your_username/my_dataset --push
+python data_collection/collect.py --repo-id your_username/my_dataset --push
 ```
 
 The data collection interface will:
