@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import pprint
 import uuid
 import time
@@ -91,6 +97,33 @@ def main() -> None:
     running = True
     recording_lock = threading.Lock()
 
+    # Image capture state
+    latest_image = None
+    image_valid = False
+    image_lock = threading.Lock()
+
+    def image_capture_thread() -> None:
+        """Continuously capture images from camera in separate thread."""
+        nonlocal latest_image, image_valid
+        logger.info("Starting image capture thread...")
+
+        while running:
+            try:
+                succ, image = cap.read()
+                with image_lock:
+                    if succ:
+                        latest_image = image.copy()
+                        image_valid = True
+                    else:
+                        image_valid = False
+                        logger.warning("Failed to capture image")
+                # Small sleep to avoid excessive CPU usage
+                time.sleep(0.001)
+            except Exception as e:
+                logger.error(f"Error in image capture thread: {e}")
+                with image_lock:
+                    image_valid = False
+
     def keyboard_thread() -> None:
         nonlocal recording, frame_count, running
         while running:
@@ -124,6 +157,11 @@ def main() -> None:
                 logger.error(f"Error in keyboard thread: {e}")
                 break
 
+    # Start image capture thread
+    image_thread = threading.Thread(target=image_capture_thread, daemon=True)
+    image_thread.start()
+
+    # Start keyboard input thread
     input_thread = threading.Thread(target=keyboard_thread, daemon=True)
     input_thread.start()
 
@@ -138,15 +176,17 @@ def main() -> None:
         try:
             action = leader.get_action()
             follower.send_action(action)
-            succ, image = cap.read()
 
-            if not succ:
-                logger.warning("Failed to get image, skipping this loop")
-
+            # Get the current recording state and image
             with recording_lock:
                 is_recording = recording
 
-            if is_recording:
+            with image_lock:
+                has_valid_image = image_valid
+                current_image = latest_image.copy() if image_valid else None
+
+            # Only record if we're in recording mode AND have a valid image
+            if is_recording and has_valid_image:
                 obs = follower.get_observation()
 
                 # logger.info(f"Observation: {pprint.pformat(obs, indent=2)}")
@@ -172,7 +212,7 @@ def main() -> None:
                     frame = {
                         "action": action_array,
                         "observation.state": obs_state_array,
-                        "observation.images.cam_leader": image,
+                        "observation.images.cam_leader": current_image,
                         "task": "soarm_grasp",
                     }
 
@@ -184,6 +224,8 @@ def main() -> None:
                 # Log progress every Hz frames (every 1 second)
                 if current_frame_count % args.hz == 0:
                     logger.debug(f"Recording: {current_frame_count} frames captured")
+            elif is_recording and not has_valid_image:
+                logger.warning("Recording active but no valid image available, skipping frame")
 
             time.sleep(period)
 

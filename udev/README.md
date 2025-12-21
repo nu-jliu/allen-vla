@@ -45,7 +45,7 @@ sudo udevadm trigger
 Disconnect and reconnect your SO101 arms. You should now be able to access them without `sudo`:
 
 ```bash
-python teleop/teleop.py
+python teleop/main.py
 ```
 
 ## Advanced: Creating Consistent Device Names
@@ -110,14 +110,14 @@ lrwxrwxrwx 1 root root 7 Dec 18 10:00 /dev/so101_leader -> ttyACM0
 
 ```bash
 # Use default ports or specify which ttyACM device is which
-python teleop/teleop.py --leader-port /dev/ttyACM0 --follower-port /dev/ttyACM1
+python teleop/main.py --leader-port /dev/ttyACM0 --follower-port /dev/ttyACM1
 ```
 
 ### With Symbolic Links (Method 1 or 2)
 
 ```bash
 # Use consistent device names
-python teleop/teleop.py --leader-port /dev/so101_leader --follower-port /dev/so101_follower
+python teleop/main.py --leader-port /dev/so101_leader --follower-port /dev/so101_follower
 ```
 
 ## Troubleshooting

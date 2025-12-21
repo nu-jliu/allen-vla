@@ -7,9 +7,14 @@ distributed training, Weights & Biases for experiment tracking, and comprehensiv
 checkpoint management.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import torch
 import logging
-from pathlib import Path
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
 
 from tqdm import tqdm
@@ -204,6 +209,7 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
 
     # ACT Policy Configuration
     act_config = ACTConfig(
+        device="cuda" if torch.cuda.is_available() else "cpu",
         chunk_size=args.chunk_size,
         n_action_steps=args.n_action_steps,
         n_obs_steps=1,  # ACT default
@@ -282,7 +288,9 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     return train_config
 
 
-def train_with_progress(cfg: TrainPipelineConfig, total_steps: int, show_progress: bool = True) -> None:
+def train_with_progress(
+    cfg: TrainPipelineConfig, total_steps: int, show_progress: bool = True
+) -> None:
     """Wrapper around LeRobot's train() function with tqdm progress tracking.
 
     :param cfg: Training configuration

@@ -66,9 +66,14 @@ uv run python <script>.py
 
 The codebase is organized as follows:
 
-- **`teleop.py`**: Teleoperation script for manual control of the follower arm using the leader arm
-- **`data_collection.py`**: Data collection pipeline for recording demonstration datasets
-- **`train_act.py`**: Training script for ACT (Action Chunking Transformer) policy
+- **`data_collection/`**: Data collection pipeline for recording demonstration datasets
+  - **`main.py`**: Main data collection script
+- **`teleop/`**: Teleoperation scripts for manual control
+  - **`main.py`**: Teleoperation script for controlling the follower arm using the leader arm
+- **`policy/`**: Policy training and inference
+  - **`train/`**: Training scripts
+    - **`train_act.py`**: Training script for ACT (Action Chunking Transformer) policy
+  - **`inference/`**: Inference scripts (coming soon)
 - **`robot_utils.py`**: Shared utilities for robot initialization and configuration
 - **`utils.py`**: Common utilities including colored logging setup
 - **`udev/`**: Udev rules for consistent SO101 robot arm device naming
@@ -133,13 +138,13 @@ This script uses rsync to sync all project files (excluding virtual environments
 Run the teleoperation script to control the follower arm using the leader arm:
 
 ```bash
-python teleop.py
+python teleop/main.py
 ```
 
 Or using uv:
 
 ```bash
-uv run python teleop.py
+uv run python teleop/main.py
 ```
 
 The script accepts the following command-line arguments:
@@ -153,13 +158,13 @@ The script accepts the following command-line arguments:
 **Example with custom ports:**
 
 ```bash
-python teleop.py --leader-port /dev/ttyACM2 --follower-port /dev/ttyACM3
+python teleop/main.py --leader-port /dev/ttyACM2 --follower-port /dev/ttyACM3
 ```
 
 **Example with custom IDs:**
 
 ```bash
-python teleop.py --leader-id leader_arm --follower-id follower_arm
+python teleop/main.py --leader-id leader_arm --follower-id follower_arm
 ```
 
 The teleoperation interface will:
@@ -176,13 +181,13 @@ The teleoperation interface will:
 Collect demonstration datasets for training VLA models:
 
 ```bash
-python data_collection.py
+python data_collection/main.py
 ```
 
 Or using uv:
 
 ```bash
-uv run python data_collection.py
+uv run python data_collection/main.py
 ```
 
 The script accepts the following command-line arguments:
@@ -198,13 +203,13 @@ The script accepts the following command-line arguments:
 **Example:**
 
 ```bash
-python data_collection.py --repo-id your_username/my_dataset
+python data_collection/main.py --repo-id your_username/my_dataset
 ```
 
 **Example with push to Hugging Face Hub:**
 
 ```bash
-python data_collection.py --repo-id your_username/my_dataset --push
+python data_collection/main.py --repo-id your_username/my_dataset --push
 ```
 
 The data collection interface will:
@@ -220,13 +225,13 @@ The data collection interface will:
 Train an ACT (Action Chunking Transformer) policy on your collected datasets:
 
 ```bash
-python train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+python policy/train/train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
 ```
 
 Or using uv:
 
 ```bash
-uv run python train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+uv run python policy/train/train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
 ```
 
 #### Required Arguments
@@ -271,7 +276,7 @@ uv run python train_act.py --repo-id your_username/your_dataset --output-dir ./o
 **Example with custom hyperparameters:**
 
 ```bash
-python train_act.py \
+python policy/train/train_act.py \
   --repo-id jliu6718/lerobot-so101-abc123 \
   --output-dir ./outputs/act_experiment1 \
   --batch-size 16 \
@@ -284,7 +289,7 @@ python train_act.py \
 **Example resuming from checkpoint:**
 
 ```bash
-python train_act.py \
+python policy/train/train_act.py \
   --repo-id jliu6718/lerobot-so101-abc123 \
   --output-dir ./outputs/act_experiment1 \
   --resume

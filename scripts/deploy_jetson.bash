@@ -15,7 +15,7 @@ if [ -z "$1" ]; then
 fi
 
 SSH_TARGET="$1"
-REMOTE_DIR="/home/allen/.ws/via_ws/"
+REMOTE_DIR="/home/allen/.ws/vla_ws/"
 
 echo "================================================"
 echo "Deploying to: ${SSH_TARGET}:${REMOTE_DIR}"
