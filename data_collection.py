@@ -51,6 +51,8 @@ def main() -> None:
     leader, follower = initialize_robots(args, calibrate=True)
 
     cap = cv2.VideoCapture(0)
+    # Configure camera FPS based on control frequency
+    cap.set(cv2.CAP_PROP_FPS, args.hz)
     # Get camera properties
     cam_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
