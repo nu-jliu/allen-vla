@@ -191,21 +191,20 @@ The script accepts the following command-line arguments:
 - `--leader-id`: ID for the leader arm (default: `my_leader`)
 - `--follower-port`: Serial port for the follower arm (default: `/dev/ttyACM1`)
 - `--follower-id`: ID for the follower arm (default: `my_follower`)
-- `--hf-username`: Hugging Face username (default: `jliu6718`)
-- `--repo-id`: Dataset repository name (default: `lerobot-so101`)
+- `--repo-id`: HuggingFace repository ID in format `username/repo-name` (default: `jliu6718/lerobot-so101`)
 - `--hz`: Control loop frequency in Hz (default: `30`)
 - `--push`: Push dataset to Hugging Face Hub after collection (flag)
 
 **Example:**
 
 ```bash
-python data_collection.py --hf-username your_username --repo-id my_dataset
+python data_collection.py --repo-id your_username/my_dataset
 ```
 
 **Example with push to Hugging Face Hub:**
 
 ```bash
-python data_collection.py --hf-username your_username --repo-id my_dataset --push
+python data_collection.py --repo-id your_username/my_dataset --push
 ```
 
 The data collection interface will:
