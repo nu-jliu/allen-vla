@@ -15,9 +15,8 @@ import numpy as np
 from argparse import ArgumentParser
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from lerobot.datasets.utils import hw_to_dataset_features
 
-from utils import setup_logging
+from utils import setup_logging, build_observation_features, build_action_features
 from robot_utils import add_common_robot_args, initialize_robots
 
 setup_logging()
@@ -44,6 +43,12 @@ def main() -> None:
         action="store_true",
         help="Push dataset to Hugging Face Hub after collection",
     )
+    parser.add_argument(
+        "--camera-index",
+        type=int,
+        default=0,
+        help="Camera device index (default: 0)",
+    )
     args = parser.parse_args()
 
     logger.info("Starting data collection with configuration:")
@@ -53,31 +58,26 @@ def main() -> None:
     logger.info(f"  Follower ID: {args.follower_id}")
     logger.info(f"  Repo ID: {args.repo_id}")
     logger.info(f"  Control frequency: {args.hz} Hz")
+    logger.info(f"  Camera index: {args.camera_index}")
 
     leader, follower = initialize_robots(args, calibrate=True)
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(args.camera_index)
     # Configure camera FPS based on control frequency
     cap.set(cv2.CAP_PROP_FPS, args.hz)
     # Get camera properties
     cam_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    obs_features = hw_to_dataset_features(
-        follower.observation_features,
-        prefix="observation",
+    # Build features using shared utility functions
+    # Uses 'front' as the camera name to match ACT policy default expectations
+    obs_features = build_observation_features(
+        robot_obs_features=follower.observation_features,
+        cam_height=cam_height,
+        cam_width=cam_width,
+        camera_name="front",
     )
-    action_features = hw_to_dataset_features(
-        follower.action_features,
-        prefix="action",
-    )
-
-    # Manually add camera feature since we're using cv2.VideoCapture directly
-    obs_features["observation.images.cam_leader"] = {
-        "dtype": "video",
-        "shape": (cam_height, cam_width, 3),
-        "names": ["height", "width", "channels"],
-    }
+    action_features = build_action_features(follower.action_features)
 
     logger.info(f"Observation features: {follower.observation_features}")
     logger.info(f"Action features: {follower.action_features}")
@@ -94,6 +94,7 @@ def main() -> None:
 
     recording = False
     frame_count = 0
+    episode_count = 0
     running = True
     recording_lock = threading.Lock()
 
@@ -125,7 +126,7 @@ def main() -> None:
                     image_valid = False
 
     def keyboard_thread() -> None:
-        nonlocal recording, frame_count, running
+        nonlocal recording, frame_count, episode_count, running
         while running:
             try:
                 logger.info("Press ENTER to start/stop recording...")
@@ -143,8 +144,9 @@ def main() -> None:
                         recording = False
                         if frame_count > 0:
                             dataset.save_episode()
+                            episode_count += 1
                             logger.info(
-                                f"=== RECORDING STOPPED === (Saved {frame_count} frames)"
+                                f"=== RECORDING STOPPED === (Saved {frame_count} frames, Episode {episode_count})"
                             )
                         else:
                             logger.info(
@@ -212,7 +214,7 @@ def main() -> None:
                     frame = {
                         "action": action_array,
                         "observation.state": obs_state_array,
-                        "observation.images.cam_leader": current_image,
+                        "observation.images.front": current_image,
                         "task": "soarm_grasp",
                     }
 
@@ -237,6 +239,7 @@ def main() -> None:
             logger.info("Disconnecting from follower robot...")
             follower.disconnect()
             dataset.finalize()
+            logger.info(f"Total episodes recorded: {episode_count}")
             if args.push:
                 logger.info("Pushing dataset to Hugging Face Hub...")
                 dataset.push_to_hub()
