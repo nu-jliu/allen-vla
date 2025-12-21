@@ -1,6 +1,6 @@
 import os
 import logging
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 from lerobot.robots.so101_follower import SO101Follower, SO101FollowerConfig
@@ -19,7 +19,13 @@ CALIBRATION_DIR = os.path.join(
 
 
 def add_common_robot_args(parser: ArgumentParser) -> ArgumentParser:
-    """Add common robot configuration arguments to an argument parser."""
+    """Add common robot configuration arguments to an argument parser.
+
+    :param parser: Argument parser to add robot arguments to
+    :type parser: ArgumentParser
+    :return: Argument parser with added robot arguments
+    :rtype: ArgumentParser
+    """
     parser.add_argument(
         "--leader-port",
         type=str,
@@ -47,8 +53,14 @@ def add_common_robot_args(parser: ArgumentParser) -> ArgumentParser:
     return parser
 
 
-def create_robot_configs(args):
-    """Create leader and follower robot configurations from parsed arguments."""
+def create_robot_configs(args: Namespace) -> tuple[SO101LeaderConfig, SO101FollowerConfig]:
+    """Create leader and follower robot configurations from parsed arguments.
+
+    :param args: Parsed command line arguments
+    :type args: argparse.Namespace
+    :return: Tuple of (leader_config, follower_config)
+    :rtype: tuple[SO101LeaderConfig, SO101FollowerConfig]
+    """
     leader_config = SO101LeaderConfig(
         port=args.leader_port,
         use_degrees=False,
@@ -77,8 +89,16 @@ def create_robot_configs(args):
     return leader_config, follower_config
 
 
-def initialize_robots(args, calibrate=True):
-    """Initialize and connect leader and follower robots."""
+def initialize_robots(args: Namespace, calibrate: bool = True) -> tuple[SO101Leader, SO101Follower]:
+    """Initialize and connect leader and follower robots.
+
+    :param args: Parsed command line arguments
+    :type args: argparse.Namespace
+    :param calibrate: Whether to calibrate robots during connection
+    :type calibrate: bool
+    :return: Tuple of (leader, follower) robot instances
+    :rtype: tuple[SO101Leader, SO101Follower]
+    """
     logger.info("Creating robot configurations...")
     leader_config, follower_config = create_robot_configs(args)
 

@@ -12,7 +12,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     parser = ArgumentParser(description="Teleoperation for SO101 robot")
     parser = add_common_robot_args(parser)
     parser.add_argument(

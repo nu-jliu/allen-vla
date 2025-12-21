@@ -7,9 +7,10 @@ distributed training, Weights & Biases for experiment tracking, and comprehensiv
 checkpoint management.
 """
 
+import torch
 import logging
 from pathlib import Path
-from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
 
 from tqdm import tqdm
 from lerobot.configs.default import DatasetConfig, WandBConfig
@@ -23,8 +24,12 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def parse_args():
-    """Parse command line arguments with sensible defaults."""
+def parse_args() -> Namespace:
+    """Parse command line arguments with sensible defaults.
+
+    :return: Parsed command line arguments
+    :rtype: argparse.Namespace
+    """
     parser = ArgumentParser(
         description="Train ACT policy on SO101 robot dataset",
         formatter_class=RawDescriptionHelpFormatter,
@@ -180,21 +185,20 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_training_config(args):
-    """
-    Build TrainPipelineConfig from parsed arguments.
+def build_training_config(args: Namespace) -> TrainPipelineConfig:
+    """Build TrainPipelineConfig from parsed arguments.
 
     This function creates the complete training configuration by assembling:
+
     - ACTConfig: Policy architecture and hyperparameters
     - DatasetConfig: Dataset loading configuration
     - WandBConfig: Experiment tracking configuration
     - TrainPipelineConfig: Main training pipeline configuration
 
-    Args:
-        args: Parsed command line arguments
-
-    Returns:
-        TrainPipelineConfig: Complete training configuration
+    :param args: Parsed command line arguments
+    :type args: argparse.Namespace
+    :return: Complete training configuration
+    :rtype: TrainPipelineConfig
     """
     logger.info("Building training configuration...")
 
@@ -278,14 +282,15 @@ def build_training_config(args):
     return train_config
 
 
-def train_with_progress(cfg, total_steps, show_progress=True):
-    """
-    Wrapper around LeRobot's train() function with tqdm progress tracking.
+def train_with_progress(cfg: TrainPipelineConfig, total_steps: int, show_progress: bool = True) -> None:
+    """Wrapper around LeRobot's train() function with tqdm progress tracking.
 
-    Args:
-        cfg: Training configuration
-        total_steps: Total number of training steps
-        show_progress: Whether to show tqdm progress bar
+    :param cfg: Training configuration
+    :type cfg: TrainPipelineConfig
+    :param total_steps: Total number of training steps
+    :type total_steps: int
+    :param show_progress: Whether to show tqdm progress bar
+    :type show_progress: bool
     """
     import os
     import sys
@@ -293,7 +298,7 @@ def train_with_progress(cfg, total_steps, show_progress=True):
     if show_progress:
         # Enable tqdm for better progress visibility
         # LeRobot's training loop likely already has tqdm, but we ensure it's visible
-        os.environ['TQDM_DISABLE'] = '0'
+        os.environ["TQDM_DISABLE"] = "0"
 
         logger.info("Training with progress bar enabled")
         logger.info(f"Progress will be tracked over {total_steps:,} steps")
@@ -307,7 +312,7 @@ def train_with_progress(cfg, total_steps, show_progress=True):
             unit="step",
             file=sys.stdout,
             dynamic_ncols=True,
-            colour='green'
+            colour="green",
         ) as pbar:
             # Store original stdout to restore later
             pbar.set_postfix_str("Initializing training...")
@@ -321,22 +326,24 @@ def train_with_progress(cfg, total_steps, show_progress=True):
             pbar.refresh()
     else:
         # Disable tqdm if requested
-        os.environ['TQDM_DISABLE'] = '1'
+        os.environ["TQDM_DISABLE"] = "1"
         logger.info("Training with progress bar disabled")
         train(cfg)
 
 
-def main():
-    """
-    Main training entry point.
+def main() -> None:
+    """Main training entry point.
 
     Flow:
+
     1. Parse command line arguments
     2. Log startup information and configuration
     3. Build training configuration
     4. Validate configuration
     5. Delegate to LeRobot's train() function with progress tracking
     6. Handle errors gracefully with proper logging
+
+    :raises Exception: If training fails
     """
     logger.info("=" * 60)
     logger.info("ACT Policy Training for SO101 Robot")

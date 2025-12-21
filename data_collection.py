@@ -18,7 +18,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     parser = ArgumentParser(description="Data collection for SO101 robot")
     parser = add_common_robot_args(parser)
     parser.add_argument(
@@ -89,7 +89,7 @@ def main():
     running = True
     recording_lock = threading.Lock()
 
-    def keyboard_thread():
+    def keyboard_thread() -> None:
         nonlocal recording, frame_count, running
         while running:
             try:
