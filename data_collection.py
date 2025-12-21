@@ -22,16 +22,10 @@ def main():
     parser = ArgumentParser(description="Data collection for SO101 robot")
     parser = add_common_robot_args(parser)
     parser.add_argument(
-        "--hf-username",
-        type=str,
-        default="jliu6718",
-        help="Hugging Face username",
-    )
-    parser.add_argument(
         "--repo-id",
         type=str,
-        default="lerobot-so101",
-        help="Name of the dataset repo",
+        default="jliu6718/lerobot-so101",
+        help="Hugging Face repository ID (format: username/repo-name)",
     )
     parser.add_argument(
         "--hz",
@@ -51,7 +45,6 @@ def main():
     logger.info(f"  Leader ID: {args.leader_id}")
     logger.info(f"  Follower port: {args.follower_port}")
     logger.info(f"  Follower ID: {args.follower_id}")
-    logger.info(f"  HF username: {args.hf_username}")
     logger.info(f"  Repo ID: {args.repo_id}")
     logger.info(f"  Control frequency: {args.hz} Hz")
 
@@ -81,9 +74,9 @@ def main():
     logger.info(f"Observation features: {follower.observation_features}")
     logger.info(f"Action features: {follower.action_features}")
 
-    logger.info(f"Creating dataset: {args.hf_username}/{args.repo_id}")
+    logger.info(f"Creating dataset: {args.repo_id}")
     dataset = LeRobotDataset.create(
-        repo_id=f"{args.hf_username}/{args.repo_id}-{uuid.uuid4()}",
+        repo_id=f"{args.repo_id}-{uuid.uuid4()}",
         fps=args.hz,
         features={**action_features, **obs_features},
         robot_type=follower.name,
