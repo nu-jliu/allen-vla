@@ -16,7 +16,7 @@ import logging
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
 
 from lerobot.scripts.lerobot_record import record, RecordConfig, DatasetRecordConfig
-from lerobot.robots.so100_follower.config_so100_follower import SO100FollowerConfig
+from lerobot.robots.so101_follower import SO101FollowerConfig
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 
@@ -88,8 +88,8 @@ Examples:
     robot.add_argument(
         "--robot-type",
         type=str,
-        default="so100_follower",
-        help="Robot type (default: so100_follower)",
+        default="so101_follower",
+        help="Robot type (default: so101_follower)",
     )
     robot.add_argument(
         "--robot-id",
@@ -223,7 +223,7 @@ def create_record_config(args: Namespace) -> RecordConfig:
     }
 
     # Create robot configuration
-    robot_config = SO100FollowerConfig(
+    robot_config = SO101FollowerConfig(
         port=args.robot_port,
         id=args.robot_id,
         cameras=cameras,

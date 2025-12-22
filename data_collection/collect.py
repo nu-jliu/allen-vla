@@ -11,12 +11,13 @@ import logging
 import threading
 import cv2
 import numpy as np
+import shutil
 
 from argparse import ArgumentParser
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
-from utils import setup_logging, build_observation_features, build_action_features
+from utils import setup_logging, build_dataset_features_for_so101
 from robot_utils import add_common_robot_args, initialize_robots
 
 setup_logging()
@@ -49,6 +50,24 @@ def main() -> None:
         default=0,
         help="Camera device index (default: 0)",
     )
+    parser.add_argument(
+        "--camera-width",
+        type=int,
+        default=640,
+        help="Camera width in pixels (default: 640)",
+    )
+    parser.add_argument(
+        "--camera-height",
+        type=int,
+        default=480,
+        help="Camera height in pixels (default: 480)",
+    )
+    parser.add_argument(
+        "--root",
+        type=str,
+        default="data",
+        help="Root directory for dataset storage (default: data)",
+    )
     args = parser.parse_args()
 
     logger.info("Starting data collection with configuration:")
@@ -59,28 +78,42 @@ def main() -> None:
     logger.info(f"  Repo ID: {args.repo_id}")
     logger.info(f"  Control frequency: {args.hz} Hz")
     logger.info(f"  Camera index: {args.camera_index}")
+    logger.info(f"  Camera resolution: {args.camera_width}x{args.camera_height}")
+    logger.info(f"  Root directory: {args.root}")
+
+    # Remove root directory if it exists
+    root_path = Path(args.root)
+    if root_path.exists():
+        logger.warning(f"Root directory {args.root} already exists. Removing it...")
+        shutil.rmtree(root_path)
+        logger.info(f"Removed existing directory: {args.root}")
 
     leader, follower = initialize_robots(args, calibrate=True)
 
     cap = cv2.VideoCapture(args.camera_index)
-    # Configure camera FPS based on control frequency
+    # Configure camera resolution and FPS
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.camera_width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.camera_height)
     cap.set(cv2.CAP_PROP_FPS, args.hz)
-    # Get camera properties
+    # Verify camera properties match requested values
     cam_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if cam_width != args.camera_width or cam_height != args.camera_height:
+        logger.warning(
+            f"Camera resolution mismatch: requested {args.camera_width}x{args.camera_height}, "
+            f"got {cam_width}x{cam_height}. This may cause issues during training/inference."
+        )
 
-    # Build features using shared utility functions
-    # Uses 'front' as the camera name to match ACT policy default expectations
-    obs_features = build_observation_features(
-        robot_obs_features=follower.observation_features,
+    # Build dataset features using centralized helper function
+    # This ensures features are always consistent between collection and training
+    obs_features, action_features = build_dataset_features_for_so101(
         cam_height=cam_height,
         cam_width=cam_width,
         camera_name="front",
     )
-    action_features = build_action_features(follower.action_features)
 
-    logger.info(f"Observation features: {follower.observation_features}")
-    logger.info(f"Action features: {follower.action_features}")
+    logger.info(f"Observation features: {obs_features}")
+    logger.info(f"Action features: {action_features}")
 
     logger.info(f"Creating dataset: {args.repo_id}")
     dataset = LeRobotDataset.create(
@@ -89,8 +122,9 @@ def main() -> None:
         features={**action_features, **obs_features},
         robot_type=follower.name,
         use_videos=True,
+        root=args.root,
     )
-    print(dataset.features)
+    logger.info(f"Dataset features: {dataset.features}")
 
     recording = False
     frame_count = 0
@@ -227,7 +261,9 @@ def main() -> None:
                 if current_frame_count % args.hz == 0:
                     logger.debug(f"Recording: {current_frame_count} frames captured")
             elif is_recording and not has_valid_image:
-                logger.warning("Recording active but no valid image available, skipping frame")
+                logger.warning(
+                    "Recording active but no valid image available, skipping frame"
+                )
 
             time.sleep(period)
 

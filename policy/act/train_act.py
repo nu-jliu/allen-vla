@@ -5,6 +5,25 @@ Training script for ACT (Action Chunking Transformer) policy on SO101 robot data
 This script uses LeRobot's full training infrastructure including Accelerate for
 distributed training, Weights & Biases for experiment tracking, and comprehensive
 checkpoint management.
+
+FEATURE SPECIFICATION:
+---------------------------------------------------
+Features are automatically extracted from the dataset by the LeRobot training
+pipeline. The dataset should be collected using collect.py, which uses the
+centralized build_dataset_features_for_so101() function from utils.py.
+
+EXPECTED FEATURES (from data collection):
+  INPUT FEATURES:
+    - observation.state: [6] float32
+        Joint positions: shoulder_pan.pos, shoulder_lift.pos, elbow_flex.pos,
+                         wrist_flex.pos, wrist_roll.pos, gripper.pos
+    - observation.images.front: [3, 480, 640] video
+        Front camera RGB image (default resolution, configurable in collect.py)
+
+  OUTPUT FEATURES:
+    - action: [6] float32
+        Target joint positions: shoulder_pan.pos, shoulder_lift.pos, elbow_flex.pos,
+                                wrist_flex.pos, wrist_roll.pos, gripper.pos
 """
 
 import sys
@@ -109,32 +128,6 @@ def parse_args() -> Namespace:
         help="Disable tqdm progress bar",
     )
 
-    # Weights & Biases configuration
-    wandb_group = parser.add_argument_group("Weights & Biases")
-    wandb_group.add_argument(
-        "--wandb-enable",
-        action="store_true",
-        help="Enable Weights & Biases logging",
-    )
-    wandb_group.add_argument(
-        "--wandb-project",
-        type=str,
-        default="soarm-act-training",
-        help="Wandb project name (default: soarm-act-training)",
-    )
-    wandb_group.add_argument(
-        "--wandb-entity",
-        type=str,
-        default=None,
-        help="Wandb entity/team name (optional)",
-    )
-    wandb_group.add_argument(
-        "--wandb-notes",
-        type=str,
-        default=None,
-        help="Wandb run notes/description (optional)",
-    )
-
     # ACT-specific hyperparameters
     act_group = parser.add_argument_group("ACT hyperparameters")
     act_group.add_argument(
@@ -200,6 +193,14 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     - WandBConfig: Experiment tracking configuration
     - TrainPipelineConfig: Main training pipeline configuration
 
+    Features are automatically extracted from the dataset by the LeRobot training
+    pipeline using dataset_to_policy_features(). We only need to specify
+    ACT-specific hyperparameters here.
+
+    Expected features (from dataset collected with collect.py):
+      INPUT: observation.state [6], observation.images.front [3, H, W]
+      OUTPUT: action [6]
+
     :param args: Parsed command line arguments
     :type args: argparse.Namespace
     :return: Complete training configuration
@@ -208,6 +209,8 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     logger.info("Building training configuration...")
 
     # ACT Policy Configuration
+    # Features will be automatically populated from the dataset by the training pipeline
+    # We only specify ACT-specific hyperparameters here
     act_config = ACTConfig(
         device="cuda" if torch.cuda.is_available() else "cpu",
         chunk_size=args.chunk_size,
@@ -225,6 +228,7 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
         # - use_vae=True, latent_dim=32
         # - optimizer_weight_decay=1e-4
         # - optimizer_lr_backbone=1e-5
+        # - normalization_mapping uses MEAN_STD for VISUAL, STATE, and ACTION
     )
 
     # Dataset Configuration
@@ -233,12 +237,9 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
         root=args.dataset_root,
     )
 
-    # Weights & Biases Configuration
+    # Weights & Biases Configuration - Disabled
     wandb_config = WandBConfig(
-        enable=args.wandb_enable,
-        project=args.wandb_project,
-        entity=args.wandb_entity,
-        notes=args.wandb_notes,
+        enable=False,
     )
 
     # Main Training Pipeline Configuration
@@ -276,20 +277,26 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     logger.info(f"  KL weight: {args.kl_weight}")
     logger.info(f"  Dropout: {args.dropout}")
     logger.info("")
+    logger.info("Features:")
+    logger.info("  Input/output features will be automatically extracted from the dataset")
+    logger.info("  Expected features (from collect.py with default 640x480 camera):")
+    logger.info("    - INPUT: observation.state [6], observation.images.front [3, H, W]")
+    logger.info("    - OUTPUT: action [6]")
+    logger.info("")
     logger.info("Logging:")
     logger.info(f"  Log frequency: {args.log_freq} steps")
     logger.info(f"  Save frequency: {args.save_freq} steps")
     logger.info(f"  Progress bar: {'enabled' if args.progress_bar else 'disabled'}")
     logger.info(f"  Push to Hub: {'enabled' if args.push else 'disabled'}")
-    logger.info(f"  Wandb: {'enabled' if args.wandb_enable else 'disabled'}")
-    if args.wandb_enable:
-        logger.info(f"  Wandb project: {args.wandb_project}")
+    logger.info(f"  Wandb: disabled")
 
     return train_config
 
 
 def train_with_progress(
-    cfg: TrainPipelineConfig, total_steps: int, show_progress: bool = True
+    cfg: TrainPipelineConfig,
+    total_steps: int,
+    show_progress: bool = True,
 ) -> None:
     """Wrapper around LeRobot's train() function with tqdm progress tracking.
 

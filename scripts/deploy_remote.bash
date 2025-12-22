@@ -43,6 +43,8 @@ rsync -avz --progress --delete --delete-excluded --mkpath \
     --exclude '*.egg-info/' \
     --exclude 'dist/' \
     --exclude 'build/' \
+    --exclude 'model/' \
+    --exclude 'data/' \
     --exclude '.DS_Store' \
     --exclude '*.swp' \
     --exclude '*.swo' \
