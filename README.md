@@ -73,9 +73,13 @@ The codebase is organized as follows:
 - **`teleop/`**: Teleoperation scripts for manual control
   - **`teleop.py`**: Teleoperation script for controlling the follower arm using the leader arm
 - **`policy/`**: Policy training and inference
-  - **`train/`**: Training scripts
-    - **`train_act.py`**: Training script for ACT (Action Chunking Transformer) policy
-  - **`inference/`**: Inference scripts (coming soon)
+  - **`act/`**: ACT (Action Chunking Transformer) policy
+    - **`train_act.py`**: Training script for ACT policy
+    - **`inference_act.py`**: Inference/evaluation script for deploying trained ACT policies
+- **`scripts/`**: Utility scripts for deployment and data management
+  - **`deploy_remote.bash`**: Deploy project files to remote machine (e.g., Jetson)
+  - **`download_data.bash`**: Download collected data from remote machine
+  - **`download_model.bash`**: Download trained models from remote machine
 - **`robot_utils.py`**: Shared utilities for robot initialization and configuration
 - **`utils.py`**: Common utilities including colored logging setup
 - **`udev/`**: Udev rules for consistent SO101 robot arm device naming
@@ -117,21 +121,53 @@ For detailed hardware setup instructions including creating symbolic links for c
 
 ## Deployment
 
-### Deploy to Jetson Device
+### Deploy to Remote Device
 
-To deploy this project to a remote Jetson device:
+To deploy this project to a remote device (e.g., Jetson):
 
 ```bash
-./scripts/deploy_jetson.bash <user@host>
+./scripts/deploy_remote.bash <username> <hostname>
 ```
 
 **Example:**
 
 ```bash
-./scripts/deploy_jetson.bash allen@jetson
+./scripts/deploy_remote.bash allen jetson
 ```
 
-This script uses rsync to sync all project files (excluding virtual environments and cache files) to the remote Jetson at `/home/allen/.ws/via_ws/`.
+This script uses rsync to sync all project files (excluding virtual environments, cache files, data, and models) to the remote machine at `/home/<username>/.ws/vla_ws/`.
+
+### Download Data from Remote
+
+To download collected datasets from a remote machine:
+
+```bash
+./scripts/download_data.bash <username> <hostname>
+```
+
+**Example:**
+
+```bash
+./scripts/download_data.bash allen jetson
+```
+
+This syncs the `data/` directory from the remote machine to your local project.
+
+### Download Models from Remote
+
+To download trained models from a remote machine:
+
+```bash
+./scripts/download_model.bash <username> <hostname>
+```
+
+**Example:**
+
+```bash
+./scripts/download_model.bash allen jetson
+```
+
+This syncs the `model/` directory from the remote machine to your local project.
 
 ## Usage
 
@@ -251,13 +287,13 @@ The data collection interface will:
 Train an ACT (Action Chunking Transformer) policy on your collected datasets:
 
 ```bash
-python policy/train/train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+python policy/act/train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
 ```
 
 Or using uv:
 
 ```bash
-uv run python policy/train/train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+uv run python policy/act/train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
 ```
 
 #### Required Arguments
@@ -302,7 +338,7 @@ uv run python policy/train/train_act.py --repo-id your_username/your_dataset --o
 **Example with custom hyperparameters:**
 
 ```bash
-python policy/train/train_act.py \
+python policy/act/train_act.py \
   --repo-id jliu6718/lerobot-so101-abc123 \
   --output-dir ./outputs/act_experiment1 \
   --batch-size 16 \
@@ -315,7 +351,7 @@ python policy/train/train_act.py \
 **Example resuming from checkpoint:**
 
 ```bash
-python policy/train/train_act.py \
+python policy/act/train_act.py \
   --repo-id jliu6718/lerobot-so101-abc123 \
   --output-dir ./outputs/act_experiment1 \
   --resume
@@ -328,6 +364,85 @@ The training script will:
 4. Save checkpoints at specified intervals
 5. Log metrics to console and optionally to Weights & Biases
 6. Support distributed training out of the box
+
+### ACT Policy Inference
+
+Run inference with a trained ACT policy on the SO101 robot:
+
+```bash
+python policy/act/inference_act.py \
+  --checkpoint ./outputs/act_training/pretrained_model \
+  --robot-port /dev/ttyACM0 \
+  --camera-index 0 \
+  --repo-id your_username/eval_results
+```
+
+Or using uv:
+
+```bash
+uv run python policy/act/inference_act.py \
+  --checkpoint ./outputs/act_training/pretrained_model \
+  --robot-port /dev/ttyACM0 \
+  --camera-index 0 \
+  --repo-id your_username/eval_results
+```
+
+#### Required Arguments
+
+- `--checkpoint`: Path to trained policy checkpoint or HuggingFace repo ID
+- `--robot-port`: Robot port (e.g., `/dev/ttyACM0`)
+- `--camera-index`: Camera index or path (e.g., `0` for `/dev/video0`)
+- `--repo-id`: Dataset repo ID for saving evaluation results
+
+#### Robot Configuration
+
+- `--robot-type`: Robot type (default: `so101_follower`)
+- `--robot-id`: Robot ID (default: `eval_robot`)
+
+#### Camera Configuration
+
+- `--camera-name`: Camera name in config (default: `front`)
+- `--camera-width`: Camera width (default: `640`)
+- `--camera-height`: Camera height (default: `480`)
+- `--camera-fps`: Camera FPS (default: `30`)
+
+#### Evaluation Parameters
+
+- `--num-episodes`: Number of episodes to evaluate (default: `10`)
+- `--task-description`: Task description for this evaluation run
+- `--fps`: Control frequency in Hz (default: `30`)
+- `--episode-time`: Maximum time per episode in seconds (default: `60`)
+- `--reset-time`: Time for resetting between episodes in seconds (default: `60`)
+
+#### Data Saving Options
+
+- `--root`: Root directory to save dataset locally
+- `--push-to-hub`: Push evaluation dataset to HuggingFace Hub
+- `--video`: Encode videos in the dataset (default: enabled)
+
+#### Display Options
+
+- `--display-data` / `--no-display`: Show/hide camera feed during evaluation
+- `--play-sounds`: Enable vocal synthesis for events
+
+**Example with HuggingFace Hub model:**
+
+```bash
+python policy/act/inference_act.py \
+  --checkpoint username/act_policy \
+  --robot-port /dev/ttyACM0 \
+  --camera-index 0 \
+  --num-episodes 5 \
+  --repo-id username/eval_results \
+  --push-to-hub
+```
+
+The inference script will:
+1. Load the trained policy from checkpoint or HuggingFace Hub
+2. Connect to the robot and camera
+3. Run autonomous policy control for the specified number of episodes
+4. Save evaluation results as a dataset for analysis
+5. Optionally push the evaluation dataset to HuggingFace Hub
 
 ## Todo List
 
@@ -343,12 +458,12 @@ The training script will:
 
 ### Phase 2: Training & Deployment Pipeline
 - [x] Setup training infrastructure (GPU environment, configs)
-- [x] Implement ACT (Action Chunking Transformer) pipeline
+- [x] Implement ACT (Action Chunking Transformer) training pipeline
+- [x] Implement ACT inference/evaluation pipeline
 - [ ] Implement π0 model training pipeline
 - [ ] Implement π0.5 model training pipeline
 - [ ] Add additional VLA models as needed
 - [ ] Create evaluation metrics and benchmarking scripts
-- [ ] Implement model deployment interface for SoArm
 - [ ] Test deployed models on real hardware
 - [ ] Compare model performance and document results
 
