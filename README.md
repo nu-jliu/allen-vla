@@ -64,25 +64,41 @@ uv run python <script>.py
 
 ## Project Structure
 
-The codebase is organized as follows:
-
-- **`calibration/`**: Robot calibration utilities
-  - **`calibrate.py`**: Calibration script for SO101 follower arm
-- **`data_collection/`**: Data collection pipeline for recording demonstration datasets
-  - **`collect.py`**: Main data collection script
-- **`teleop/`**: Teleoperation scripts for manual control
-  - **`teleop.py`**: Teleoperation script for controlling the follower arm using the leader arm
-- **`policy/`**: Policy training and inference
-  - **`act/`**: ACT (Action Chunking Transformer) policy
-    - **`train_act.py`**: Training script for ACT policy
-    - **`inference_act.py`**: Inference/evaluation script for deploying trained ACT policies
-- **`scripts/`**: Utility scripts for deployment and data management
-  - **`deploy_remote.bash`**: Deploy project files to remote machine (e.g., Jetson)
-  - **`download_data.bash`**: Download collected data from remote machine
-  - **`download_model.bash`**: Download trained models from remote machine
-- **`robot_utils.py`**: Shared utilities for robot initialization and configuration
-- **`utils.py`**: Common utilities including colored logging setup
-- **`udev/`**: Udev rules for consistent SO101 robot arm device naming
+```
+allen-vla/
+├── assets/
+│   └── data_collection_demo.gif
+├── calibration/
+│   ├── __init__.py
+│   └── calibrate.py              # Calibration script for SO101 follower arm
+├── data_collection/
+│   ├── __init__.py
+│   └── collect.py                # Main data collection script
+├── policy/
+│   ├── __init__.py
+│   └── act/
+│       ├── __init__.py
+│       ├── train_act.py          # Training script for ACT policy
+│       ├── inference_act.py      # Local inference (policy + robot on same machine)
+│       ├── inference_server.py   # TCP server for remote inference (GPU machine)
+│       └── inference_client.py   # Robot client (connects to inference server)
+├── scripts/
+│   ├── deploy_remote.bash        # Deploy project files to remote machine
+│   ├── download_data.bash        # Download collected data from remote machine
+│   └── download_model.bash       # Download trained models from remote machine
+├── teleop/
+│   ├── __init__.py
+│   └── teleop.py                 # Teleoperation script for leader-follower control
+├── udev/
+│   ├── 99-so101.rules            # Udev rules for consistent device naming
+│   └── README.md
+├── __init__.py
+├── main.py
+├── robot_utils.py                # Shared utilities for robot initialization
+├── utils.py                      # Common utilities including colored logging
+├── pyproject.toml
+└── README.md
+```
 
 All scripts use a common logging infrastructure with color-coded output for better visibility during operations.
 
@@ -443,6 +459,81 @@ The inference script will:
 3. Run autonomous policy control for the specified number of episodes
 4. Save evaluation results as a dataset for analysis
 5. Optionally push the evaluation dataset to HuggingFace Hub
+
+### Client-Server Inference (Remote GPU)
+
+For setups where the robot runs on a low-power device (e.g., Jetson) and inference runs on a remote GPU server, use the client-server architecture:
+
+#### Start the Inference Server (GPU Machine)
+
+```bash
+python policy/act/inference_server.py \
+  --checkpoint ./outputs/act_training/pretrained_model \
+  --port 8000 \
+  --device cuda
+```
+
+**Server Arguments:**
+
+- `--checkpoint`: Path to trained policy checkpoint or HuggingFace repo ID (required)
+- `--host`: Host address to bind to (default: `0.0.0.0`)
+- `--port`: Port to listen on (default: `8000`)
+- `--device`: Device to run inference on (default: `cuda`)
+- `--task`: Task description for inference
+
+#### Start the Robot Client (Robot Machine)
+
+```bash
+python policy/act/inference_client.py \
+  --server-host <gpu_server_ip> \
+  --server-port 8000 \
+  --robot-port /dev/ttyACM0 \
+  --camera-index 0 \
+  --num-episodes 10
+```
+
+**Client Arguments:**
+
+- `--server-host`: Inference server host address (required)
+- `--server-port`: Inference server port (default: `8000`)
+- `--robot-port`: Robot serial port (required)
+- `--camera-index`: Camera index or path (required)
+- `--camera-name`: Camera name in config (default: `front`)
+- `--camera-width`: Camera width (default: `640`)
+- `--camera-height`: Camera height (default: `480`)
+- `--camera-fps`: Camera FPS (default: `30`)
+- `--num-episodes`: Number of episodes to run (default: `10`)
+- `--episode-time`: Duration of each episode in seconds (default: `60`)
+- `--reset-time`: Time for reset between episodes in seconds (default: `60`)
+- `--fps`: Control frequency in Hz (default: `30`)
+
+**Example with Jetson and Remote GPU:**
+
+On the GPU server (e.g., `192.168.1.100`):
+```bash
+python policy/act/inference_server.py \
+  --checkpoint username/act_policy \
+  --port 8000 \
+  --device cuda
+```
+
+On the Jetson (robot machine):
+```bash
+python policy/act/inference_client.py \
+  --server-host 192.168.1.100 \
+  --server-port 8000 \
+  --robot-port /dev/ttyACM0 \
+  --camera-index 0 \
+  --num-episodes 5 \
+  --fps 30
+```
+
+The client-server architecture:
+1. **Server**: Loads the policy model and handles inference requests over TCP
+2. **Client**: Connects to the robot, gathers observations, sends them to the server, and actuates the robot with returned actions
+3. **Communication**: Uses pickle serialization over TCP with length-prefixed messages
+4. **Multi-client**: Server supports multiple concurrent robot connections via threading
+5. **Episode management**: Client sends reset signals to server between episodes to clear policy state
 
 ## Todo List
 

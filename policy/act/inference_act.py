@@ -20,6 +20,7 @@ from lerobot.robots.so101_follower import SO101FollowerConfig
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 
+from uuid import uuid4
 from utils import setup_logging
 
 setup_logging()
@@ -213,9 +214,11 @@ def create_record_config(args: Namespace) -> RecordConfig:
     logger.info("Building evaluation configuration...")
 
     # Create camera configuration
+    # Convert camera_index to int if numeric, otherwise keep as path string
+    camera_index = int(args.camera_index) if args.camera_index.isdigit() else args.camera_index
     cameras = {
         args.camera_name: OpenCVCameraConfig(
-            index_or_path=args.camera_index,
+            index_or_path=camera_index,
             width=args.camera_width,
             height=args.camera_height,
             fps=args.camera_fps,
@@ -231,7 +234,7 @@ def create_record_config(args: Namespace) -> RecordConfig:
 
     # Create dataset configuration
     dataset_config = DatasetRecordConfig(
-        repo_id=args.repo_id,
+        repo_id=f"{args.repo_id}-{uuid4()}",
         single_task=args.task_description,
         root=args.root,
         fps=args.fps,
@@ -303,7 +306,9 @@ def main():
         logger.info(f"Total episodes: {dataset.num_episodes}")
         logger.info(f"Total frames: {dataset.num_frames}")
         if args.push_to_hub:
-            logger.info(f"Dataset pushed to: https://huggingface.co/datasets/{args.repo_id}")
+            logger.info(
+                f"Dataset pushed to: https://huggingface.co/datasets/{args.repo_id}"
+            )
         logger.info("=" * 60)
 
     except KeyboardInterrupt:

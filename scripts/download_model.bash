@@ -17,7 +17,7 @@ fi
 USERNAME="$1"
 HOSTNAME="$2"
 SSH_TARGET="${USERNAME}@${HOSTNAME}"
-REMOTE_DIR="/home/${USERNAME}/.ws/vla_ws/model/"
+REMOTE_DIR="/home/${USERNAME}/.ws/vla_ws/model/checkpoints/last"
 
 # Get absolute path to project root (parent of script directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,7 +36,7 @@ echo "================================================"
 # --progress: show progress
 # --delete: delete files locally that don't exist on remote
 # --mkpath: create local directory path if it doesn't exist
-rsync -avz --progress --delete --mkpath \
+rsync -avzL --progress --delete --mkpath \
     "${SSH_TARGET}:${REMOTE_DIR}" "${LOCAL_DIR}"
 
 echo "================================================"
