@@ -96,36 +96,15 @@ class InferenceServer:
         """Load the policy and create preprocessor/postprocessor pipelines."""
         logger.info(f"Loading policy from {self.checkpoint}...")
 
-        # Load policy config
+        # Load policy config (following inference_act.py pattern)
         policy_cfg = PreTrainedConfig.from_pretrained(self.checkpoint)
         policy_cfg.pretrained_path = self.checkpoint
         policy_cfg.device = str(self.device)
 
         # Load dataset metadata for features and stats
-        # The checkpoint should have a dataset reference or we need to load stats
-        try:
-            # Try to load the dataset info from the checkpoint
-            dataset_repo_id = getattr(policy_cfg, "dataset_repo_id", None)
-            if dataset_repo_id:
-                ds = LeRobotDataset(dataset_repo_id)
-                ds_meta = ds.meta
-            else:
-                # Load from the checkpoint directory
-                checkpoint_path = Path(self.checkpoint)
-                if checkpoint_path.exists():
-                    # Local checkpoint - look for dataset info
-                    ds = LeRobotDataset.from_pretrained(self.checkpoint)
-                    ds_meta = ds.meta
-                else:
-                    # HuggingFace checkpoint - load metadata from hub
-                    from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
-                    ds_meta = LeRobotDatasetMetadata.from_pretrained(self.checkpoint)
-        except Exception as e:
-            logger.warning(f"Could not load dataset metadata: {e}")
-            logger.info("Attempting to load policy without dataset metadata...")
-            ds_meta = None
+        ds_meta = self._load_dataset_metadata(policy_cfg)
 
-        # Create policy
+        # Create policy and processors
         if ds_meta is not None:
             self.policy = make_policy(policy_cfg, ds_meta=ds_meta)
             self.ds_features = ds_meta.features
@@ -140,34 +119,75 @@ class InferenceServer:
                 },
             )
         else:
-            # Fallback: try to load policy directly
-            from lerobot.policies.act.modeling_act import ACTPolicy
-            self.policy = ACTPolicy.from_pretrained(self.checkpoint)
-            self.policy.to(self.device)
-
-            # Load preprocessor/postprocessor from checkpoint
-            self.preprocessor, self.postprocessor = make_pre_post_processors(
-                policy_cfg=policy_cfg,
-                pretrained_path=self.checkpoint,
-                preprocessor_overrides={
-                    "device_processor": {"device": str(self.device)},
-                },
-            )
-
-            # Get features from policy config
-            self.ds_features = {
-                "action": {
-                    "names": [f.name for f in policy_cfg.output_features.values()
-                              if hasattr(f, 'name')] or
-                             ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos",
-                              "wrist_flex.pos", "wrist_roll.pos", "gripper.pos"]
-                }
-            }
+            # Fallback: load policy directly without dataset metadata
+            self._load_policy_fallback(policy_cfg)
 
         self.policy.eval()
         logger.info("Policy loaded successfully")
-        logger.info(f"  Device: {self.device}")
         logger.info(f"  Policy type: {policy_cfg.type}")
+
+    def _load_dataset_metadata(self, policy_cfg: PreTrainedConfig):
+        """Load dataset metadata for the policy.
+
+        :param policy_cfg: Policy configuration
+        :return: Dataset metadata or None if not available
+        """
+        try:
+            # Try to load the dataset info from the policy config
+            dataset_repo_id = getattr(policy_cfg, "dataset_repo_id", None)
+            if dataset_repo_id:
+                logger.info(f"Loading dataset metadata from: {dataset_repo_id}")
+                ds = LeRobotDataset(dataset_repo_id)
+                return ds.meta
+
+            logger.info("No dataset_repo_id in policy config, using fallback method")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Could not load dataset metadata: {e}")
+            logger.info("Attempting to load policy without dataset metadata...")
+            return None
+
+    def _load_policy_fallback(self, policy_cfg: PreTrainedConfig) -> None:
+        """Load policy without dataset metadata (fallback method).
+
+        :param policy_cfg: Policy configuration
+        """
+        from lerobot.policies.act.modeling_act import ACTPolicy
+
+        logger.info("Loading ACT policy directly from checkpoint...")
+        self.policy = ACTPolicy.from_pretrained(self.checkpoint)
+        self.policy.to(self.device)
+
+        # Load preprocessor/postprocessor from checkpoint
+        self.preprocessor, self.postprocessor = make_pre_post_processors(
+            policy_cfg=policy_cfg,
+            pretrained_path=self.checkpoint,
+            preprocessor_overrides={
+                "device_processor": {"device": str(self.device)},
+            },
+        )
+
+        # Get features from policy config output_features
+        action_names = []
+        if hasattr(policy_cfg, "output_features"):
+            for feature in policy_cfg.output_features.values():
+                if hasattr(feature, "name"):
+                    action_names.append(feature.name)
+
+        # Fallback to default SO101 motor names if not found
+        if not action_names:
+            action_names = [
+                "shoulder_pan.pos",
+                "shoulder_lift.pos",
+                "elbow_flex.pos",
+                "wrist_flex.pos",
+                "wrist_roll.pos",
+                "gripper.pos",
+            ]
+
+        self.ds_features = {"action": {"names": action_names}}
+        logger.info(f"  Action features: {action_names}")
 
     def process_observation(self, obs_dict: dict[str, np.ndarray]) -> dict[str, float]:
         """Process an observation and return the predicted action.
@@ -289,6 +309,18 @@ class InferenceServer:
         :param host: Host address to bind to
         :param port: Port to listen on
         """
+        logger.info("=" * 60)
+        logger.info("ACT Policy Inference Server")
+        logger.info("=" * 60)
+        logger.info("")
+        logger.info("Configuration:")
+        logger.info(f"  Checkpoint: {self.checkpoint}")
+        logger.info(f"  Device: {self.device}")
+        logger.info(f"  Task: {self.task}")
+        logger.info(f"  Host: {host}")
+        logger.info(f"  Port: {port}")
+        logger.info("")
+
         # Load policy first
         self.load_policy()
 
@@ -299,10 +331,9 @@ class InferenceServer:
         server.listen(5)
 
         self._running = True
+        logger.info("")
         logger.info("=" * 60)
-        logger.info("ACT Policy Inference Server")
-        logger.info("=" * 60)
-        logger.info(f"Listening on {host}:{port}")
+        logger.info(f"Server listening on {host}:{port}")
         logger.info("Press Ctrl+C to stop")
         logger.info("=" * 60)
 
@@ -348,31 +379,39 @@ Examples:
         """,
     )
 
-    parser.add_argument(
+    # Required arguments
+    required = parser.add_argument_group("required arguments")
+    required.add_argument(
         "--checkpoint",
         type=str,
         required=True,
         help="Path to trained policy checkpoint or HuggingFace repo ID",
     )
-    parser.add_argument(
+
+    # Server configuration
+    server = parser.add_argument_group("server configuration")
+    server.add_argument(
         "--host",
         type=str,
         default="0.0.0.0",
         help="Host address to bind to (default: 0.0.0.0)",
     )
-    parser.add_argument(
+    server.add_argument(
         "--port",
         type=int,
         default=8000,
         help="Port to listen on (default: 8000)",
     )
-    parser.add_argument(
+
+    # Inference parameters
+    inference = parser.add_argument_group("inference parameters")
+    inference.add_argument(
         "--device",
         type=str,
         default="cuda",
         help="Device to run inference on (default: cuda)",
     )
-    parser.add_argument(
+    inference.add_argument(
         "--task",
         type=str,
         default="Policy evaluation",

@@ -87,12 +87,6 @@ Examples:
     # Robot configuration
     robot = parser.add_argument_group("robot configuration")
     robot.add_argument(
-        "--robot-type",
-        type=str,
-        default="so101_follower",
-        help="Robot type (default: so101_follower)",
-    )
-    robot.add_argument(
         "--robot-id",
         type=str,
         default="eval_robot",
@@ -184,8 +178,8 @@ Examples:
     display.add_argument(
         "--display-data",
         action="store_true",
-        default=True,
-        help="Display camera feed and robot state during evaluation (default: enabled)",
+        default=False,
+        help="Display camera feed and robot state during evaluation (default: disabled for headless mode)",
     )
     display.add_argument(
         "--no-display",
@@ -217,7 +211,6 @@ def create_record_config(args: Namespace) -> RecordConfig:
     checkpoint = args.checkpoint
     robot_port = args.robot_port
     robot_id = args.robot_id
-    robot_type = args.robot_type
     camera_index_str = args.camera_index
     camera_name = args.camera_name
     camera_width = args.camera_width
@@ -274,6 +267,8 @@ def create_record_config(args: Namespace) -> RecordConfig:
     policy_config.pretrained_path = checkpoint
 
     # Create main record configuration
+    # Note: For headless mode, display_data=False and play_sounds=False
+    # The library's is_headless() check will handle keyboard listener appropriately
     config = RecordConfig(
         robot=robot_config,
         dataset=dataset_config,
@@ -286,7 +281,7 @@ def create_record_config(args: Namespace) -> RecordConfig:
 
     logger.info("Configuration created successfully")
     logger.info(f"  Policy: {checkpoint}")
-    logger.info(f"  Robot: {robot_type} @ {robot_port}")
+    logger.info(f"  Robot: so101_follower @ {robot_port}")
     logger.info(f"  Camera: {camera_name} (index: {camera_index_str})")
     logger.info(f"  Episodes: {num_episodes}")
     logger.info(f"  Dataset: {repo_id}")
@@ -301,7 +296,6 @@ def main():
 
     # Extract args to local variables
     checkpoint = args.checkpoint
-    robot_type = args.robot_type
     robot_port = args.robot_port
     camera_name = args.camera_name
     camera_index = args.camera_index
@@ -317,7 +311,7 @@ def main():
     logger.info("")
     logger.info("Configuration:")
     logger.info(f"  Checkpoint: {checkpoint}")
-    logger.info(f"  Robot: {robot_type}:{robot_port}")
+    logger.info(f"  Robot: so101_follower @ {robot_port}")
     logger.info(f"  Camera: {camera_name} @ index {camera_index}")
     logger.info(f"  Episodes: {num_episodes}")
     logger.info(f"  FPS: {fps}")

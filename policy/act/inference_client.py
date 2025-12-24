@@ -94,6 +94,7 @@ class InferenceClient:
         camera_width: int = 640,
         camera_height: int = 480,
         camera_fps: int = 30,
+        robot_id: str = "inference_robot",
     ) -> None:
         """Connect to the robot.
 
@@ -103,6 +104,7 @@ class InferenceClient:
         :param camera_width: Camera width
         :param camera_height: Camera height
         :param camera_fps: Camera FPS
+        :param robot_id: Robot ID
         """
         logger.info("Connecting to robot...")
 
@@ -119,7 +121,7 @@ class InferenceClient:
         # Create robot config
         robot_config = SO101FollowerConfig(
             port=robot_port,
-            id="inference_robot",
+            id=robot_id,
             cameras=cameras,
         )
 
@@ -128,6 +130,7 @@ class InferenceClient:
         self.robot.connect()
 
         logger.info(f"Robot connected on {robot_port}")
+        logger.info(f"Robot ID: {robot_id}")
         logger.info(f"Camera: {camera_name} @ index {camera_index}")
 
     def connect_server(self) -> None:
@@ -314,11 +317,6 @@ class InferenceClient:
         logger.info("=" * 60)
         logger.info("Starting inference run")
         logger.info("=" * 60)
-        logger.info(f"  Episodes: {num_episodes}")
-        logger.info(f"  Episode time: {episode_time_s}s")
-        logger.info(f"  Reset time: {reset_time_s}s")
-        logger.info(f"  FPS: {fps}")
-        logger.info("=" * 60)
 
         total_steps = 0
 
@@ -375,14 +373,29 @@ Examples:
         """,
     )
 
-    # Server connection
-    server = parser.add_argument_group("server connection")
-    server.add_argument(
+    # Required arguments
+    required = parser.add_argument_group("required arguments")
+    required.add_argument(
         "--server-host",
         type=str,
         required=True,
         help="Inference server host address",
     )
+    required.add_argument(
+        "--robot-port",
+        type=str,
+        required=True,
+        help="Robot serial port (e.g., /dev/ttyACM0)",
+    )
+    required.add_argument(
+        "--camera-index",
+        type=str,
+        required=True,
+        help="Camera index or path (e.g., '0' for /dev/video0)",
+    )
+
+    # Server configuration
+    server = parser.add_argument_group("server configuration")
     server.add_argument(
         "--server-port",
         type=int,
@@ -393,20 +406,14 @@ Examples:
     # Robot configuration
     robot = parser.add_argument_group("robot configuration")
     robot.add_argument(
-        "--robot-port",
+        "--robot-id",
         type=str,
-        required=True,
-        help="Robot serial port (e.g., /dev/ttyACM0)",
+        default="inference_robot",
+        help="Robot ID (default: inference_robot)",
     )
 
     # Camera configuration
     camera = parser.add_argument_group("camera configuration")
-    camera.add_argument(
-        "--camera-index",
-        type=str,
-        required=True,
-        help="Camera index or path (e.g., '0' for /dev/video0)",
-    )
     camera.add_argument(
         "--camera-name",
         type=str,
@@ -470,6 +477,7 @@ def main():
     server_host = args.server_host
     server_port = args.server_port
     robot_port = args.robot_port
+    robot_id = args.robot_id
     camera_index_str = args.camera_index
     camera_name = args.camera_name
     camera_width = args.camera_width
@@ -487,6 +495,21 @@ def main():
     else:
         camera_index = camera_index_str
 
+    logger.info("=" * 60)
+    logger.info("ACT Policy Inference Client")
+    logger.info("=" * 60)
+    logger.info("")
+    logger.info("Configuration:")
+    logger.info(f"  Server: {server_host}:{server_port}")
+    logger.info(f"  Robot: so101_follower @ {robot_port}")
+    logger.info(f"  Robot ID: {robot_id}")
+    logger.info(f"  Camera: {camera_name} @ index {camera_index_str}")
+    logger.info(f"  Episodes: {num_episodes}")
+    logger.info(f"  Episode time: {episode_time}s")
+    logger.info(f"  Reset time: {reset_time}s")
+    logger.info(f"  FPS: {fps}")
+    logger.info("")
+
     # Create client
     client = InferenceClient(
         server_host=server_host,
@@ -502,6 +525,7 @@ def main():
             camera_width=camera_width,
             camera_height=camera_height,
             camera_fps=camera_fps,
+            robot_id=robot_id,
         )
 
         # Connect to server

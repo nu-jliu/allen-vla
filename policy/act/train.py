@@ -115,8 +115,8 @@ def parse_args() -> Namespace:
     training.add_argument(
         "--seed",
         type=int,
-        default=1000,
-        help="Random seed for reproducibility (default: 1000)",
+        default=42,
+        help="Random seed for reproducibility (default: 42)",
     )
 
     # Logging and checkpointing
@@ -340,9 +340,13 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     logger.info(f"  Dropout: {dropout}")
     logger.info("")
     logger.info("Features:")
-    logger.info("  Input/output features will be automatically extracted from the dataset")
+    logger.info(
+        "  Input/output features will be automatically extracted from the dataset"
+    )
     logger.info("  Expected features (from collect.py with default 640x480 camera):")
-    logger.info("    - INPUT: observation.state [6], observation.images.front [3, H, W]")
+    logger.info(
+        "    - INPUT: observation.state [6], observation.images.front [3, H, W]"
+    )
     logger.info("    - OUTPUT: action [6]")
     logger.info("")
     logger.info("Logging:")
