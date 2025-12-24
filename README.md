@@ -9,6 +9,122 @@ This project aims to explore and benchmark different VLA models for robotic mani
 1. **Teleoperation & Data Collection Pipeline**: Setup LeRobot with SoArm for teleoperating the robot and collecting high-quality demonstration datasets
 2. **Training & Deployment Pipeline**: Implement, train, and deploy various VLA models (π0, π0.5, ACT, etc.) and evaluate their performance
 
+## Architecture Overview
+
+```mermaid
+flowchart TB
+    subgraph TELEOP["🎮 Teleoperation"]
+        LA[/"👋 Leader Arm<br/>(Human Control)"/]
+        FA1["🦾 Follower Arm<br/>(Mirrors Leader)"]
+        LA -->|"Position Commands<br/>@ 20-30 Hz"| FA1
+    end
+
+    subgraph DATACOLLECT["📹 Data Collection"]
+        CAM["📷 Camera<br/>(RGB Frames)"]
+        FA2["🦾 Follower Arm<br/>(Joint States)"]
+        LA2[/"👋 Leader Arm<br/>(Action Labels)"/]
+
+        CAM --> OBS
+        FA2 --> OBS
+        LA2 --> ACT_LABEL
+
+        OBS["Observations<br/>• observation.images.front<br/>• observation.state"]
+        ACT_LABEL["Actions<br/>• action (6 joints)"]
+
+        OBS --> EP
+        ACT_LABEL --> EP
+        EP["Episode Buffer<br/>(Press ENTER to record)"]
+    end
+
+    subgraph DATASET["💾 LeRobot Dataset"]
+        direction TB
+        LOCAL_DS[("🗂️ Local Dataset<br/>data/{repo-id}/")]
+        HF_DS[("🤗 Hugging Face Hub<br/>username/dataset-name")]
+
+        LOCAL_DS <-->|"push/pull<br/>huggingface_hub"| HF_DS
+    end
+
+    subgraph TRAINING["🏋️ Training Pipeline"]
+        direction TB
+        DS_LOAD["Dataset Loader<br/>(LeRobotDataset)"]
+        ACT_MODEL["🧠 ACT Model<br/>(Action Chunking<br/>Transformer)"]
+        CKPT[("💾 Checkpoints<br/>outputs/pretrained_model/")]
+        WANDB["📊 Weights & Biases<br/>(Optional Logging)"]
+
+        DS_LOAD --> ACT_MODEL
+        ACT_MODEL -->|"Save @ N steps"| CKPT
+        ACT_MODEL -.->|"Metrics"| WANDB
+    end
+
+    subgraph INFERENCE_LOCAL["🤖 Local Inference"]
+        direction TB
+        POLICY_L["🧠 ACT Policy"]
+        ROBOT_L["🦾 SO101 Robot"]
+        CAM_L["📷 Camera"]
+
+        CAM_L -->|"RGB Frame"| POLICY_L
+        ROBOT_L -->|"Joint State"| POLICY_L
+        POLICY_L -->|"Action Chunk<br/>(100 steps)"| ROBOT_L
+    end
+
+    subgraph INFERENCE_REMOTE["🌐 Client-Server Inference"]
+        direction TB
+        subgraph SERVER["☁️ GPU Server"]
+            POLICY_S["🧠 ACT Policy<br/>(CUDA)"]
+            TCP_S["TCP Server<br/>:8000"]
+        end
+
+        subgraph CLIENT["🤖 Robot Client (Jetson)"]
+            ROBOT_C["🦾 SO101 Robot"]
+            CAM_C["📷 Camera"]
+            TCP_C["TCP Client"]
+        end
+
+        CAM_C -->|"RGB"| TCP_C
+        ROBOT_C -->|"State"| TCP_C
+        TCP_C <-->|"Observations ➡️<br/>⬅️ Actions<br/>(pickle/TCP)"| TCP_S
+        TCP_S <--> POLICY_S
+        TCP_C -->|"Actions"| ROBOT_C
+    end
+
+    subgraph EVAL["📊 Evaluation"]
+        EVAL_DS[("🗂️ Eval Dataset<br/>repo-id/eval_results")]
+        HF_EVAL[("🤗 Hugging Face Hub")]
+
+        EVAL_DS -->|"--push-to-hub"| HF_EVAL
+    end
+
+    %% Main Flow Connections
+    TELEOP ==>|"Human demos"| DATACOLLECT
+    EP ==>|"Episodes"| LOCAL_DS
+    HF_DS ==>|"Download"| DS_LOAD
+    CKPT ==>|"Load model"| POLICY_L
+    CKPT ==>|"Load model"| POLICY_S
+    INFERENCE_LOCAL -.->|"Save results"| EVAL_DS
+    INFERENCE_REMOTE -.->|"Save results"| EVAL_DS
+
+    %% Styling
+    classDef huggingface fill:#FFD21E,stroke:#FF9D00,color:#000
+    classDef storage fill:#E8F4FD,stroke:#1E88E5,color:#000
+    classDef model fill:#E8F5E9,stroke:#43A047,color:#000
+    classDef hardware fill:#FFF3E0,stroke:#FB8C00,color:#000
+
+    class HF_DS,HF_EVAL huggingface
+    class LOCAL_DS,CKPT,EVAL_DS storage
+    class ACT_MODEL,POLICY_L,POLICY_S model
+    class LA,FA1,FA2,LA2,ROBOT_L,ROBOT_C,CAM,CAM_L,CAM_C hardware
+```
+
+### Data Flow Summary
+
+| Stage | Input | Output | Storage |
+|-------|-------|--------|---------|
+| **Teleoperation** | Human hand movements | Leader arm positions | - |
+| **Data Collection** | Camera frames + Joint states | LeRobot Episodes | `data/{repo-id}/` |
+| **Dataset Sync** | Local dataset | Cloud dataset | 🤗 Hugging Face Hub |
+| **Training** | Dataset episodes | Model checkpoints | `outputs/pretrained_model/` |
+| **Inference** | Live observations | Action commands | Eval dataset (optional) |
+
 ## Installation
 
 ### Prerequisites
@@ -74,12 +190,19 @@ allen-vla/
 ├── data_collection/
 │   ├── __init__.py
 │   └── collect.py                # Main data collection script
+├── example/
+│   ├── data_collection.bash      # Example: data collection with all options
+│   ├── inference_act.bash        # Example: local ACT inference
+│   ├── inference_act_client.bash # Example: client for remote inference
+│   ├── inference_act_server.bash # Example: server for remote inference
+│   ├── teleop.bash               # Example: teleoperation
+│   └── train_act.bash            # Example: ACT training
 ├── policy/
 │   ├── __init__.py
 │   └── act/
 │       ├── __init__.py
 │       ├── train_act.py          # Training script for ACT policy
-│       ├── inference_act.py      # Local inference (policy + robot on same machine)
+│       ├── inference.py          # Local inference (policy + robot on same machine)
 │       ├── inference_server.py   # TCP server for remote inference (GPU machine)
 │       └── inference_client.py   # Robot client (connects to inference server)
 ├── scripts/
@@ -225,6 +348,8 @@ Or using uv:
 uv run python teleop/teleop.py
 ```
 
+> **Example**: See [`example/teleop.bash`](example/teleop.bash) for a complete example.
+
 The script accepts the following command-line arguments:
 
 - `--leader-port`: Serial port for the leader arm (default: `/dev/ttyACM0`)
@@ -268,6 +393,8 @@ Or using uv:
 uv run python data_collection/collect.py
 ```
 
+> **Example**: See [`example/data_collection.bash`](example/data_collection.bash) for a complete example.
+
 The script accepts the following command-line arguments:
 
 - `--leader-port`: Serial port for the leader arm (default: `/dev/ttyACM0`)
@@ -277,6 +404,10 @@ The script accepts the following command-line arguments:
 - `--repo-id`: HuggingFace repository ID in format `username/repo-name` (default: `jliu6718/lerobot-so101`)
 - `--hz`: Control loop frequency in Hz (default: `30`)
 - `--push`: Push dataset to Hugging Face Hub after collection (flag)
+- `--camera-index`: Camera index or device path (default: `0`)
+- `--camera-width`: Camera frame width (default: `640`)
+- `--camera-height`: Camera frame height (default: `480`)
+- `--root`: Root directory to save dataset locally
 
 **Example:**
 
@@ -311,6 +442,8 @@ Or using uv:
 ```bash
 uv run python policy/act/train_act.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
 ```
+
+> **Example**: See [`example/train_act.bash`](example/train_act.bash) for a complete example.
 
 #### Required Arguments
 
@@ -386,7 +519,7 @@ The training script will:
 Run inference with a trained ACT policy on the SO101 robot:
 
 ```bash
-python policy/act/inference_act.py \
+python policy/act/inference.py \
   --checkpoint ./outputs/act_training/pretrained_model \
   --robot-port /dev/ttyACM0 \
   --camera-index 0 \
@@ -396,12 +529,14 @@ python policy/act/inference_act.py \
 Or using uv:
 
 ```bash
-uv run python policy/act/inference_act.py \
+uv run python policy/act/inference.py \
   --checkpoint ./outputs/act_training/pretrained_model \
   --robot-port /dev/ttyACM0 \
   --camera-index 0 \
   --repo-id your_username/eval_results
 ```
+
+> **Example**: See [`example/inference_act.bash`](example/inference_act.bash) for a complete example.
 
 #### Required Arguments
 
@@ -463,6 +598,8 @@ The inference script will:
 ### Client-Server Inference (Remote GPU)
 
 For setups where the robot runs on a low-power device (e.g., Jetson) and inference runs on a remote GPU server, use the client-server architecture:
+
+> **Examples**: See [`example/inference_act_server.bash`](example/inference_act_server.bash) and [`example/inference_act_client.bash`](example/inference_act_client.bash) for complete examples.
 
 #### Start the Inference Server (GPU Machine)
 
@@ -547,20 +684,22 @@ The client-server architecture:
 - [x] Test teleoperation and record sample demonstrations
 - [x] Create dataset management utilities (keyboard-controlled recording, HF Hub integration)
 
-### Phase 2: Training & Deployment Pipeline
+### Phase 2: Training & Deployment Pipeline ✓
 - [x] Setup training infrastructure (GPU environment, configs)
 - [x] Implement ACT (Action Chunking Transformer) training pipeline
-- [x] Implement ACT inference/evaluation pipeline
+- [x] Implement ACT local inference/evaluation pipeline
+- [x] Implement ACT client-server inference (remote GPU support)
+- [x] Test deployed ACT model on real hardware
 - [ ] Implement π0 model training pipeline
 - [ ] Implement π0.5 model training pipeline
 - [ ] Add additional VLA models as needed
 - [ ] Create evaluation metrics and benchmarking scripts
-- [ ] Test deployed models on real hardware
 - [ ] Compare model performance and document results
 
 ### Documentation & Experimentation
-- [ ] Document hardware setup and calibration procedures
-- [ ] Create training guides for each model
+- [x] Document hardware setup and calibration procedures
+- [x] Create training guides for ACT model
+- [ ] Create training guides for π0/π0.5 models
 - [ ] Log experimental results and hyperparameters
 - [ ] Build visualization tools for trajectories and predictions
 
