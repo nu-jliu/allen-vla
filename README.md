@@ -20,11 +20,21 @@ flowchart TB
     end
 
     subgraph DATACOLLECT["📹 Data Collection"]
+        subgraph THREADS["⚡ Multi-threaded Architecture"]
+            direction LR
+            IMG_THREAD["🔄 Image Capture<br/>Thread"]
+            CMD_THREAD["🔄 Command Server<br/>Thread"]
+            MAIN_THREAD["🔄 Main Loop<br/>(Teleop + Record)"]
+        end
+
+        TELNET["📡 Telnet Server<br/>:1234<br/>(s=start/stop, a=abort, q=quit)"]
         CAM["📷 Camera<br/>(RGB Frames)"]
         FA2["🦾 Follower Arm<br/>(Joint States)"]
         LA2[/"👋 Leader Arm<br/>(Action Labels)"/]
 
-        CAM --> OBS
+        TELNET --> CMD_THREAD
+        CAM --> IMG_THREAD
+        IMG_THREAD --> OBS
         FA2 --> OBS
         LA2 --> ACT_LABEL
 
@@ -33,7 +43,7 @@ flowchart TB
 
         OBS --> EP
         ACT_LABEL --> EP
-        EP["Episode Buffer<br/>(Press ENTER to record)"]
+        EP["Episode Buffer<br/>(Controlled via telnet)"]
     end
 
     subgraph DATASET["💾 LeRobot Dataset"]
@@ -108,11 +118,15 @@ flowchart TB
     classDef storage fill:#E8F4FD,stroke:#1E88E5,color:#000
     classDef model fill:#E8F5E9,stroke:#43A047,color:#000
     classDef hardware fill:#FFF3E0,stroke:#FB8C00,color:#000
+    classDef network fill:#E1BEE7,stroke:#8E24AA,color:#000
+    classDef thread fill:#B2EBF2,stroke:#00ACC1,color:#000
 
     class HF_DS,HF_EVAL huggingface
     class LOCAL_DS,CKPT,EVAL_DS storage
     class ACT_MODEL,POLICY_L,POLICY_S model
     class LA,FA1,FA2,LA2,ROBOT_L,ROBOT_C,CAM,CAM_L,CAM_C hardware
+    class TELNET,TCP_S,TCP_C network
+    class IMG_THREAD,CMD_THREAD,MAIN_THREAD thread
 ```
 
 ### Data Flow Summary
@@ -408,6 +422,7 @@ The script accepts the following command-line arguments:
 - `--camera-width`: Camera frame width (default: `640`)
 - `--camera-height`: Camera frame height (default: `480`)
 - `--root`: Root directory to save dataset locally
+- `--port`: Port to listen for telnet commands (default: `1234`)
 
 **Example:**
 
@@ -423,11 +438,16 @@ python data_collection/collect.py --repo-id your_username/my_dataset --push
 
 The data collection interface will:
 1. Connect to both leader and follower arms
-2. Create a LeRobot dataset with unique UUID
-3. Press `ENTER` to start/stop recording episodes
-4. Capture observations and actions at 30 Hz during recording
-5. Save episodes to the dataset
-6. Press `Ctrl+C` to finalize and upload the dataset to Hugging Face Hub
+2. Create a LeRobot dataset with unique UUID and timestamp
+3. Start a telnet server for remote control (connect via `telnet localhost 1234`)
+4. Run a separate image capture thread for continuous camera streaming
+5. Commands via telnet:
+   - `s` - Start/stop recording episodes
+   - `a` - Abort current episode (discard frames)
+   - `q` - Quit and save dataset
+6. Capture observations and actions at the specified Hz (default: 30) during recording
+7. Save episodes to the dataset with video encoding
+8. Press `Ctrl+C` to finalize and optionally upload the dataset to Hugging Face Hub (with `--push` flag)
 
 ### ACT Policy
 

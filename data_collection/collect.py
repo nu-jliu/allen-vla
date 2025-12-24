@@ -8,6 +8,7 @@ import uuid
 import time
 import logging
 import threading
+import socket
 import cv2
 import numpy as np
 import shutil
@@ -68,6 +69,12 @@ def main() -> None:
         default="data",
         help="Root directory for dataset storage (default: data)",
     )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=1234,
+        help="Port to listen for commands (default: 1234)",
+    )
     args = parser.parse_args()
 
     leader_port = args.leader_port
@@ -81,6 +88,7 @@ def main() -> None:
     camera_height = args.camera_height
     root = args.root
     push = args.push
+    port = args.port
 
     logger.info("Starting data collection with configuration:")
     logger.info(f"  Leader port: {leader_port}")
@@ -92,6 +100,7 @@ def main() -> None:
     logger.info(f"  Camera index: {camera_index}")
     logger.info(f"  Camera resolution: {camera_width}x{camera_height}")
     logger.info(f"  Root directory: {root}")
+    logger.info(f"  Command port: {port}")
 
     # Remove root directory if it exists
     root_path = Path(root)
@@ -172,50 +181,185 @@ def main() -> None:
                 with image_lock:
                     image_valid = False
 
-    def keyboard_thread() -> None:
+    def command_server_thread() -> None:
+        """Listen for commands via socket connection (telnet compatible)."""
         nonlocal recording, frame_count, episode_count, running
+
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(("0.0.0.0", port))
+        server_socket.listen(1)
+        server_socket.settimeout(1.0)  # Allow periodic checking of running flag
+
+        logger.info(f"Command server listening on port {port}")
+        logger.info(f"Connect via: telnet localhost {port}")
+        logger.info("Commands: s=start/stop, a=abort episode, q=quit")
+
+        prompt = b"--> "
+        client_connected = False
+        client_lock = threading.Lock()
+
+        def send_response(sock: socket.socket, message: str) -> None:
+            """Send a response message followed by the prompt."""
+            sock.sendall(f"<-- {message}\r\n".encode() + prompt)
+
         while running:
             try:
-                logger.info("Press ENTER to start/stop recording...")
-                input()
-                with recording_lock:
-                    logger.info("Handling keyboard ...")
+                try:
+                    client_socket, addr = server_socket.accept()
 
-                    if not recording:
-                        recording = True
-                        frame_count = 0
-                        # Ensure episode buffer is properly initialized
-                        dataset.episode_buffer = dataset.create_episode_buffer()
-                        logger.info("=== RECORDING STARTED ===")
-                    else:
-                        recording = False
-                        if frame_count > 0:
-                            dataset.save_episode()
-                            episode_count += 1
-                            logger.info(
-                                f"=== RECORDING STOPPED === (Saved {frame_count} frames, Episode {episode_count})"
+                    # Check if another client is already connected
+                    with client_lock:
+                        if client_connected:
+                            logger.warning(
+                                f"Rejecting connection from {addr} - another client already connected"
                             )
-                        else:
-                            logger.info(
-                                "=== RECORDING STOPPED === (No frames captured)"
+                            client_socket.sendall(
+                                b"<-- Connection rejected: another client is already connected.\r\n"
                             )
-                        frame_count = 0
-            except EOFError:
-                break
+                            client_socket.close()
+                            continue
+                        client_connected = True
+
+                    logger.info(f"Client connected from {addr[0]}:{addr[1]}")
+                    client_socket.settimeout(0.5)
+
+                    # Send welcome message
+                    welcome_msg = (
+                        "\r\n"
+                        "========================================\r\n"
+                        "   Data Collection Controller\r\n"
+                        "========================================\r\n"
+                        "\r\n"
+                        "Commands:\r\n"
+                        "  s     - Start/Stop recording\r\n"
+                        "  a     - Abort current episode\r\n"
+                        "  q     - Quit and save dataset\r\n"
+                        "\r\n"
+                        f"Status: Ready (Episodes recorded: {episode_count})\r\n"
+                        "\r\n"
+                    )
+                    client_socket.sendall(welcome_msg.encode() + prompt)
+
+                    while running:
+                        try:
+                            data = client_socket.recv(1024)
+                            if not data:
+                                break
+
+                            # Process each byte/character received
+                            for byte in data:
+                                char = chr(byte)
+
+                                # Handle 's' - start/stop recording
+                                if char == "s":
+                                    with recording_lock:
+                                        if not recording:
+                                            recording = True
+                                            frame_count = 0
+                                            dataset.episode_buffer = (
+                                                dataset.create_episode_buffer()
+                                            )
+                                            logger.info("=== RECORDING STARTED ===")
+                                            send_response(
+                                                client_socket,
+                                                "[START] Recording started - Press s to stop",
+                                            )
+                                        else:
+                                            recording = False
+                                            if frame_count > 0:
+                                                dataset.save_episode()
+                                                episode_count += 1
+                                                msg = f"[SAVED] Episode {episode_count} saved with {frame_count} frames"
+                                                logger.info(
+                                                    f"=== RECORDING STOPPED === (Saved {frame_count} frames, Episode {episode_count})"
+                                                )
+                                            else:
+                                                msg = "[STOP] Recording stopped (No frames captured)"
+                                                logger.info(
+                                                    "=== RECORDING STOPPED === (No frames captured)"
+                                                )
+                                            send_response(client_socket, msg)
+                                            frame_count = 0
+
+                                # Handle 'a' - abort episode
+                                elif char == "a":
+                                    with recording_lock:
+                                        if recording:
+                                            recording = False
+                                            discarded = frame_count
+                                            # Clear episode buffer without saving
+                                            dataset.episode_buffer = (
+                                                dataset.create_episode_buffer()
+                                            )
+                                            frame_count = 0
+                                            logger.info(
+                                                f"=== EPISODE ABORTED === (Discarded {discarded} frames)"
+                                            )
+                                            send_response(
+                                                client_socket,
+                                                f"[ABORT] Episode aborted - Discarded {discarded} frames",
+                                            )
+                                        else:
+                                            send_response(
+                                                client_socket,
+                                                "[INFO] Not recording - nothing to abort",
+                                            )
+
+                                # Handle 'q' - quit
+                                elif char == "q":
+                                    logger.info("Quit command received from client")
+                                    client_socket.sendall(
+                                        b"\r\n<-- [QUIT] Shutting down and saving dataset...\r\n"
+                                    )
+                                    client_socket.close()
+                                    with client_lock:
+                                        client_connected = False
+                                    running = False
+                                    server_socket.close()
+                                    return
+
+                                # Handle unknown commands (ignore telnet control chars)
+                                elif ord(char) >= 32 and char not in ("\r", "\n"):
+                                    logger.warning(f"Unknown command received: '{char}'")
+                                    send_response(
+                                        client_socket,
+                                        f"[ERROR] Unknown command: '{char}' - Use s, a, or q",
+                                    )
+
+                        except socket.timeout:
+                            continue
+                        except ConnectionResetError:
+                            logger.info(f"Client {addr[0]}:{addr[1]} connection reset")
+                            break
+
+                    client_socket.close()
+                    with client_lock:
+                        client_connected = False
+                    logger.info(f"Client {addr[0]}:{addr[1]} disconnected")
+
+                except socket.timeout:
+                    continue
+
             except Exception as e:
-                logger.error(f"Error in keyboard thread: {e}")
-                break
+                if running:
+                    logger.error(f"Error in command server: {e}")
+                with client_lock:
+                    client_connected = False
+
+        server_socket.close()
+        logger.info("Command server stopped")
 
     # Start image capture thread
     image_thread = threading.Thread(target=image_capture_thread, daemon=True)
     image_thread.start()
 
-    # Start keyboard input thread
-    input_thread = threading.Thread(target=keyboard_thread, daemon=True)
-    input_thread.start()
+    # Start command server thread
+    command_thread = threading.Thread(target=command_server_thread, daemon=True)
+    command_thread.start()
 
     logger.info(
-        "Press ENTER to start/stop recording. Press Ctrl+C to exit and upload dataset."
+        f"Connect via 'telnet localhost {port}' to control recording. Press Ctrl+C to exit."
     )
 
     logger.info(f"Starting teleoperation loop at {hz} Hz...")

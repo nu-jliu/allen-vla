@@ -15,4 +15,5 @@ exec uv run data_collection/collect.py \
     --camera-index 0 \
     --camera-width 640 \
     --camera-height 480 \
-    --root ${PROJECT_ROOT}/data 
+    --root ${PROJECT_ROOT}/data \
+    --port 1234
