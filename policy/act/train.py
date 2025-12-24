@@ -78,7 +78,7 @@ def parse_args() -> Namespace:
     dataset_source.add_argument(
         "--repo-id",
         type=str,
-        help="HuggingFace Hub dataset repo ID (e.g., username/dataset-name)",
+        help="HuggingFace Hub dataset repo ID (e.g., username/policy-robot-MM-DD-YYYY)",
     )
     dataset_source.add_argument(
         "--local-dir",
@@ -90,6 +90,27 @@ def parse_args() -> Namespace:
         type=str,
         default="main",
         help="Dataset revision/branch to use (default: main)",
+    )
+
+    # Model push configuration (required when using --local-dir with --push)
+    push_group = parser.add_argument_group(
+        "model push configuration",
+        "Required when using --local-dir with --push to specify the model repo ID",
+    )
+    push_group.add_argument(
+        "--username",
+        type=str,
+        help="Hugging Face username (required with --local-dir and --push)",
+    )
+    push_group.add_argument(
+        "--policy-type",
+        type=str,
+        help="Policy type e.g. act, diffusion (required with --local-dir and --push)",
+    )
+    push_group.add_argument(
+        "--robot-type",
+        type=str,
+        help="Robot type e.g. so101 (required with --local-dir and --push)",
     )
 
     # Training hyperparameters
@@ -191,11 +212,6 @@ def parse_args() -> Namespace:
         action="store_true",
         help="Push checkpoints to HuggingFace Hub",
     )
-    advanced.add_argument(
-        "--policy-repo-id",
-        type=str,
-        help="HuggingFace Hub repo ID for pushing trained model (required if --push is enabled)",
-    )
 
     return parser.parse_args()
 
@@ -228,6 +244,9 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     # Extract args to local variables
     repo_id = args.repo_id
     local_dir = args.local_dir
+    username = args.username
+    policy_type = args.policy_type
+    robot_type = args.robot_type
     output_dir = args.output_dir
     batch_size = args.batch_size
     steps = args.steps
@@ -243,12 +262,24 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     dropout = args.dropout
     resume = args.resume
     push = args.push
-    policy_repo_id = args.policy_repo_id
     revision = args.revision
 
-    # Validate push configuration
-    if push and not policy_repo_id:
-        raise ValueError("--policy-repo-id is required when --push is enabled")
+    # Determine policy_repo_id for pushing
+    if push:
+        if repo_id is not None:
+            # Using HuggingFace dataset, use same repo_id for model
+            policy_repo_id = repo_id
+        elif all([username, policy_type, robot_type]):
+            # Using local dataset with push, construct repo_id from components
+            from datetime import datetime
+            date_str = datetime.now().strftime("%m-%d-%Y")
+            policy_repo_id = f"{username}/{policy_type}-{robot_type}-{date_str}"
+        else:
+            raise ValueError(
+                "When using --push with --local-dir, you must also specify --username, --policy-type, and --robot-type"
+            )
+    else:
+        policy_repo_id = None
 
     # Determine dataset source
     if local_dir is not None:

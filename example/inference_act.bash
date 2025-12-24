@@ -1,14 +1,17 @@
 #!/bin/bash
+# Evaluation dataset will be pushed to: jliu6718/eval_act-so101-MM-DD-YYYY
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd ${PROJECT_ROOT}
 exec uv run policy/act/inference.py \
-    --checkpoint jliu6718/lerobot-so101-act \
+    --checkpoint jliu6718/act-so101-12-24-2025 \
     --robot-port /dev/ttyACM0 \
     --camera-index 0 \
-    --repo-id jliu6718/eval_lerobot-so101-act \
+    --username jliu6718 \
+    --policy-type act \
+    --robot-type so101 \
     --robot-id my_follower \
     --camera-name front \
     --camera-width 640 \

@@ -4,7 +4,6 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import uuid
 import time
 import logging
 import threading
@@ -29,10 +28,22 @@ def main() -> None:
     parser = ArgumentParser(description="Data collection for SO101 robot")
     parser = add_common_robot_args(parser)
     parser.add_argument(
-        "--repo-id",
+        "--username",
         type=str,
-        default="jliu6718/lerobot-so101",
-        help="Hugging Face repository ID (format: username/repo-name)",
+        required=True,
+        help="Hugging Face username",
+    )
+    parser.add_argument(
+        "--policy-type",
+        type=str,
+        required=True,
+        help="Policy type (e.g., act, diffusion)",
+    )
+    parser.add_argument(
+        "--robot-type",
+        type=str,
+        required=True,
+        help="Robot type (e.g., so101)",
     )
     parser.add_argument(
         "--hz",
@@ -81,7 +92,12 @@ def main() -> None:
     leader_id = args.leader_id
     follower_port = args.follower_port
     follower_id = args.follower_id
-    repo_id = args.repo_id
+    username = args.username
+    policy_type = args.policy_type
+    robot_type = args.robot_type
+    # Construct repo_id as {username}/{policy}-{robot}-{MM}-{dd}-{yyyy}
+    date_str = datetime.now().strftime("%m-%d-%Y")
+    repo_id = f"{username}/{policy_type}-{robot_type}-{date_str}"
     hz = args.hz
     camera_index = args.camera_index
     camera_width = args.camera_width
@@ -137,9 +153,8 @@ def main() -> None:
     logger.info(f"Action features: {action_features}")
 
     logger.info(f"Creating dataset: {repo_id}")
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
     dataset = LeRobotDataset.create(
-        repo_id=f"{repo_id}-{timestamp}-{uuid.uuid4()}",
+        repo_id=repo_id,
         fps=hz,
         features={**action_features, **obs_features},
         robot_type=follower.name,
@@ -321,7 +336,9 @@ def main() -> None:
 
                                 # Handle unknown commands (ignore telnet control chars)
                                 elif ord(char) >= 32 and char not in ("\r", "\n"):
-                                    logger.warning(f"Unknown command received: '{char}'")
+                                    logger.warning(
+                                        f"Unknown command received: '{char}'"
+                                    )
                                     send_response(
                                         client_socket,
                                         f"[ERROR] Unknown command: '{char}' - Use s, a, or q",

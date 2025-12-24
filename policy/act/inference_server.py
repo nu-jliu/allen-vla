@@ -371,9 +371,9 @@ Examples:
     --checkpoint ./outputs/act_training/pretrained_model \\
     --port 8000
 
-  # Start server with HuggingFace model
+  # Start server with HuggingFace model (format: username/policy-robot-MM-DD-YYYY)
   python policy/act/inference_server.py \\
-    --checkpoint username/act_policy \\
+    --checkpoint username/act-so101-12-24-2025 \\
     --device cuda \\
     --port 8000
         """,

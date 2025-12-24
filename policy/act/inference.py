@@ -20,7 +20,6 @@ from lerobot.robots.so101_follower import SO101FollowerConfig
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 
-from uuid import uuid4
 from utils import setup_logging
 
 setup_logging()
@@ -39,20 +38,27 @@ def parse_args() -> Namespace:
         epilog="""
 Examples:
   # Basic evaluation with local checkpoint
-  python policy/act/inference_act.py \\
+  # Evaluation repo ID will be: my_username/eval_act-so101-MM-DD-YYYY
+  python policy/act/inference.py \\
     --checkpoint ./outputs/act_training/pretrained_model \\
     --robot-port /dev/ttyACM0 \\
     --camera-index 0 \\
     --num-episodes 10 \\
-    --repo-id my_username/eval_results
+    --username my_username \\
+    --policy-type act \\
+    --robot-type so101
 
   # Evaluation with HuggingFace Hub model
-  python policy/act/inference_act.py \\
-    --checkpoint username/act_policy \\
+  # Checkpoint format: username/policy-robot-MM-DD-YYYY
+  # Evaluation repo ID will be: username/eval_act-so101-MM-DD-YYYY
+  python policy/act/inference.py \\
+    --checkpoint username/act-so101-12-24-2025 \\
     --robot-port /dev/ttyACM0 \\
     --camera-index 0 \\
     --num-episodes 5 \\
-    --repo-id username/eval_results \\
+    --username username \\
+    --policy-type act \\
+    --robot-type so101 \\
     --push-to-hub
         """,
     )
@@ -78,10 +84,22 @@ Examples:
         help="Camera index or path (e.g., '0' for /dev/video0)",
     )
     required.add_argument(
-        "--repo-id",
+        "--username",
         type=str,
         required=True,
-        help="Dataset repo ID for saving evaluation results (e.g., username/eval_results)",
+        help="Hugging Face username",
+    )
+    required.add_argument(
+        "--policy-type",
+        type=str,
+        required=True,
+        help="Policy type (e.g., act, diffusion)",
+    )
+    required.add_argument(
+        "--robot-type",
+        type=str,
+        required=True,
+        help="Robot type (e.g., so101)",
     )
 
     # Robot configuration
@@ -216,7 +234,13 @@ def create_record_config(args: Namespace) -> RecordConfig:
     camera_width = args.camera_width
     camera_height = args.camera_height
     camera_fps = args.camera_fps
-    repo_id = args.repo_id
+    username = args.username
+    policy_type = args.policy_type
+    robot_type = args.robot_type
+    # Construct repo_id as {username}/eval_{policy}-{robot}-{MM}-{dd}-{yyyy}
+    from datetime import datetime
+    date_str = datetime.now().strftime("%m-%d-%Y")
+    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{date_str}"
     task_description = args.task_description
     root = args.root
     fps = args.fps
@@ -251,7 +275,7 @@ def create_record_config(args: Namespace) -> RecordConfig:
 
     # Create dataset configuration
     dataset_config = DatasetRecordConfig(
-        repo_id=f"{repo_id}-{uuid4()}",
+        repo_id=repo_id,
         single_task=task_description,
         root=root,
         fps=fps,
@@ -303,7 +327,13 @@ def main():
     fps = args.fps
     task_description = args.task_description
     push_to_hub = args.push_to_hub
-    repo_id = args.repo_id
+    username = args.username
+    policy_type = args.policy_type
+    robot_type = args.robot_type
+    # Construct repo_id as {username}/eval_{policy}-{robot}-{MM}-{dd}-{yyyy}
+    from datetime import datetime
+    date_str = datetime.now().strftime("%m-%d-%Y")
+    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{date_str}"
 
     logger.info("=" * 60)
     logger.info("ACT Policy Inference for SO101 Robot")
