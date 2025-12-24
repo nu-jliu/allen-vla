@@ -19,11 +19,14 @@ def main():
 
     args = parser.parse_args()
 
+    port = args.port
+    robot_id = args.id
+
     config = SO101FollowerConfig(
-        port=args.port,
-        id=args.id,
+        port=port,
+        id=robot_id,
     )
-    robot = SO101Follower(config)
+    robot = SO101Follower(config=config)
 
     robot.connect(calibrate=False)
     robot.calibrate()

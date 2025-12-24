@@ -62,16 +62,34 @@ def parse_args() -> Namespace:
     # Required arguments
     required = parser.add_argument_group("required arguments")
     required.add_argument(
-        "--repo-id",
-        type=str,
-        required=True,
-        help="HuggingFace dataset repo ID (e.g., jliu6718/lerobot-so101-abc123)",
-    )
-    required.add_argument(
         "--output-dir",
         type=Path,
         required=True,
         help="Directory to save checkpoints and logs",
+    )
+
+    # Dataset source (mutually exclusive)
+    dataset_group = parser.add_argument_group(
+        "dataset source (choose one)",
+        "Specify either --repo-id to load from HuggingFace Hub, "
+        "or --local-dir to load from a local directory",
+    )
+    dataset_source = dataset_group.add_mutually_exclusive_group(required=True)
+    dataset_source.add_argument(
+        "--repo-id",
+        type=str,
+        help="HuggingFace Hub dataset repo ID (e.g., username/dataset-name)",
+    )
+    dataset_source.add_argument(
+        "--local-dir",
+        type=Path,
+        help="Path to local dataset directory",
+    )
+    dataset_group.add_argument(
+        "--revision",
+        type=str,
+        default="main",
+        help="Dataset revision/branch to use (default: main)",
     )
 
     # Training hyperparameters
@@ -174,10 +192,9 @@ def parse_args() -> Namespace:
         help="Push checkpoints to HuggingFace Hub",
     )
     advanced.add_argument(
-        "--dataset-root",
+        "--policy-repo-id",
         type=str,
-        default=None,
-        help="Local dataset cache directory (optional)",
+        help="HuggingFace Hub repo ID for pushing trained model (required if --push is enabled)",
     )
 
     return parser.parse_args()
@@ -208,18 +225,58 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     """
     logger.info("Building training configuration...")
 
+    # Extract args to local variables
+    repo_id = args.repo_id
+    local_dir = args.local_dir
+    output_dir = args.output_dir
+    batch_size = args.batch_size
+    steps = args.steps
+    num_workers = args.num_workers
+    seed = args.seed
+    log_freq = args.log_freq
+    save_freq = args.save_freq
+    progress_bar = args.progress_bar
+    chunk_size = args.chunk_size
+    n_action_steps = args.n_action_steps
+    lr = args.lr
+    kl_weight = args.kl_weight
+    dropout = args.dropout
+    resume = args.resume
+    push = args.push
+    policy_repo_id = args.policy_repo_id
+    revision = args.revision
+
+    # Validate push configuration
+    if push and not policy_repo_id:
+        raise ValueError("--policy-repo-id is required when --push is enabled")
+
+    # Determine dataset source
+    if local_dir is not None:
+        # Local dataset mode
+        dataset_source = str(local_dir)
+        dataset_root = str(local_dir.parent)
+        logger.info(f"Using local dataset: {local_dir}")
+    else:
+        # HuggingFace Hub mode
+        dataset_source = repo_id
+        dataset_root = None
+        logger.info(f"Using HuggingFace Hub dataset: {repo_id}")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     # ACT Policy Configuration
     # Features will be automatically populated from the dataset by the training pipeline
     # We only specify ACT-specific hyperparameters here
     act_config = ACTConfig(
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        chunk_size=args.chunk_size,
-        n_action_steps=args.n_action_steps,
+        device=device,
+        chunk_size=chunk_size,
+        n_action_steps=n_action_steps,
         n_obs_steps=1,  # ACT default
-        optimizer_lr=args.lr,
-        kl_weight=args.kl_weight,
-        dropout=args.dropout,
-        push_to_hub=args.push,
+        optimizer_lr=lr,
+        kl_weight=kl_weight,
+        dropout=dropout,
+        push_to_hub=push,
+        repo_id=policy_repo_id if push else None,
         # All other parameters use ACTConfig defaults:
         # - vision_backbone="resnet18"
         # - pretrained_backbone_weights="ResNet18_Weights.IMAGENET1K_V1"
@@ -233,8 +290,9 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
 
     # Dataset Configuration
     dataset_config = DatasetConfig(
-        repo_id=args.repo_id,
-        root=args.dataset_root,
+        repo_id=dataset_source,
+        root=dataset_root,
+        revision=revision,
     )
 
     # Weights & Biases Configuration - Disabled
@@ -247,35 +305,39 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     train_config = TrainPipelineConfig(
         dataset=dataset_config,
         policy=act_config,
-        output_dir=args.output_dir,
-        resume=args.resume,
-        seed=args.seed,
-        num_workers=args.num_workers,
-        batch_size=args.batch_size,
-        steps=args.steps,
+        output_dir=output_dir,
+        resume=resume,
+        seed=seed,
+        num_workers=num_workers,
+        batch_size=batch_size,
+        steps=steps,
         eval_freq=0,  # No evaluation (no simulation environment)
-        log_freq=args.log_freq,
+        log_freq=log_freq,
         save_checkpoint=True,
-        save_freq=args.save_freq,
+        save_freq=save_freq,
         wandb=wandb_config,
         env=None,  # No simulation environment
     )
 
     # Log configuration details for reproducibility
     logger.info("Configuration built successfully:")
-    logger.info(f"  Dataset repo: {args.repo_id}")
-    logger.info(f"  Output directory: {args.output_dir}")
-    logger.info(f"  Training steps: {args.steps:,}")
-    logger.info(f"  Batch size: {args.batch_size}")
-    logger.info(f"  Num workers: {args.num_workers}")
-    logger.info(f"  Seed: {args.seed}")
+    if local_dir is not None:
+        logger.info(f"  Dataset source: local ({local_dir})")
+    else:
+        logger.info(f"  Dataset source: HuggingFace Hub ({repo_id})")
+        logger.info(f"  Dataset revision: {revision}")
+    logger.info(f"  Output directory: {output_dir}")
+    logger.info(f"  Training steps: {steps:,}")
+    logger.info(f"  Batch size: {batch_size}")
+    logger.info(f"  Num workers: {num_workers}")
+    logger.info(f"  Seed: {seed}")
     logger.info("")
     logger.info("ACT Configuration:")
-    logger.info(f"  Chunk size: {args.chunk_size}")
-    logger.info(f"  Action steps: {args.n_action_steps}")
-    logger.info(f"  Learning rate: {args.lr}")
-    logger.info(f"  KL weight: {args.kl_weight}")
-    logger.info(f"  Dropout: {args.dropout}")
+    logger.info(f"  Chunk size: {chunk_size}")
+    logger.info(f"  Action steps: {n_action_steps}")
+    logger.info(f"  Learning rate: {lr}")
+    logger.info(f"  KL weight: {kl_weight}")
+    logger.info(f"  Dropout: {dropout}")
     logger.info("")
     logger.info("Features:")
     logger.info("  Input/output features will be automatically extracted from the dataset")
@@ -284,10 +346,12 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     logger.info("    - OUTPUT: action [6]")
     logger.info("")
     logger.info("Logging:")
-    logger.info(f"  Log frequency: {args.log_freq} steps")
-    logger.info(f"  Save frequency: {args.save_freq} steps")
-    logger.info(f"  Progress bar: {'enabled' if args.progress_bar else 'disabled'}")
-    logger.info(f"  Push to Hub: {'enabled' if args.push else 'disabled'}")
+    logger.info(f"  Log frequency: {log_freq} steps")
+    logger.info(f"  Save frequency: {save_freq} steps")
+    logger.info(f"  Progress bar: {'enabled' if progress_bar else 'disabled'}")
+    logger.info(f"  Push to Hub: {'enabled' if push else 'disabled'}")
+    if push:
+        logger.info(f"  Policy repo ID: {policy_repo_id}")
     logger.info(f"  Wandb: disabled")
 
     return train_config
@@ -367,12 +431,23 @@ def main() -> None:
     # Parse arguments
     args = parse_args()
 
+    # Extract args to local variables
+    repo_id = args.repo_id
+    local_dir = args.local_dir
+    output_dir = args.output_dir
+    steps = args.steps
+    batch_size = args.batch_size
+    progress_bar = args.progress_bar
+
     logger.info("")
     logger.info("Starting training with configuration:")
-    logger.info(f"  Dataset: {args.repo_id}")
-    logger.info(f"  Output: {args.output_dir}")
-    logger.info(f"  Steps: {args.steps:,}")
-    logger.info(f"  Batch size: {args.batch_size}")
+    if local_dir is not None:
+        logger.info(f"  Dataset: {local_dir} (local)")
+    else:
+        logger.info(f"  Dataset: {repo_id} (HuggingFace Hub)")
+    logger.info(f"  Output: {output_dir}")
+    logger.info(f"  Steps: {steps:,}")
+    logger.info(f"  Batch size: {batch_size}")
     logger.info("")
 
     try:
@@ -389,12 +464,12 @@ def main() -> None:
         logger.info("Starting training loop...")
         logger.info("(Training will be handled by LeRobot's train() function)")
         logger.info("")
-        train_with_progress(cfg, args.steps, show_progress=args.progress_bar)
+        train_with_progress(cfg, steps, show_progress=progress_bar)
 
         logger.info("")
         logger.info("=" * 60)
         logger.info("Training completed successfully!")
-        logger.info(f"Checkpoints saved to: {args.output_dir}")
+        logger.info(f"Checkpoints saved to: {output_dir}")
         logger.info("=" * 60)
 
     except Exception as e:

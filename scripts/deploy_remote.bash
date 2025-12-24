@@ -44,6 +44,7 @@ rsync -avz --progress --delete --delete-excluded --mkpath \
     --exclude 'dist/' \
     --exclude 'build/' \
     --exclude 'data/' \
+    --exclude 'model/' \
     --exclude '.DS_Store' \
     --exclude '*.swp' \
     --exclude '*.swo' \

@@ -213,41 +213,65 @@ def create_record_config(args: Namespace) -> RecordConfig:
     """
     logger.info("Building evaluation configuration...")
 
+    # Extract args to local variables
+    checkpoint = args.checkpoint
+    robot_port = args.robot_port
+    robot_id = args.robot_id
+    robot_type = args.robot_type
+    camera_index_str = args.camera_index
+    camera_name = args.camera_name
+    camera_width = args.camera_width
+    camera_height = args.camera_height
+    camera_fps = args.camera_fps
+    repo_id = args.repo_id
+    task_description = args.task_description
+    root = args.root
+    fps = args.fps
+    episode_time = args.episode_time
+    reset_time = args.reset_time
+    num_episodes = args.num_episodes
+    video = args.video
+    push_to_hub = args.push_to_hub
+    display_data = args.display_data
+    play_sounds = args.play_sounds
+
     # Create camera configuration
     # Convert camera_index to int if numeric, otherwise keep as path string
-    camera_index = int(args.camera_index) if args.camera_index.isdigit() else args.camera_index
+    camera_index = (
+        int(camera_index_str) if camera_index_str.isdigit() else camera_index_str
+    )
     cameras = {
-        args.camera_name: OpenCVCameraConfig(
+        camera_name: OpenCVCameraConfig(
             index_or_path=camera_index,
-            width=args.camera_width,
-            height=args.camera_height,
-            fps=args.camera_fps,
+            width=camera_width,
+            height=camera_height,
+            fps=camera_fps,
         )
     }
 
     # Create robot configuration
     robot_config = SO101FollowerConfig(
-        port=args.robot_port,
-        id=args.robot_id,
+        port=robot_port,
+        id=robot_id,
         cameras=cameras,
     )
 
     # Create dataset configuration
     dataset_config = DatasetRecordConfig(
-        repo_id=f"{args.repo_id}-{uuid4()}",
-        single_task=args.task_description,
-        root=args.root,
-        fps=args.fps,
-        episode_time_s=args.episode_time,
-        reset_time_s=args.reset_time,
-        num_episodes=args.num_episodes,
-        video=args.video,
-        push_to_hub=args.push_to_hub,
+        repo_id=f"{repo_id}-{uuid4()}",
+        single_task=task_description,
+        root=root,
+        fps=fps,
+        episode_time_s=episode_time,
+        reset_time_s=reset_time,
+        num_episodes=num_episodes,
+        video=video,
+        push_to_hub=push_to_hub,
     )
 
     # Create policy configuration by loading from pretrained checkpoint
-    policy_config = PreTrainedConfig.from_pretrained(args.checkpoint)
-    policy_config.pretrained_path = args.checkpoint
+    policy_config = PreTrainedConfig.from_pretrained(checkpoint)
+    policy_config.pretrained_path = checkpoint
 
     # Create main record configuration
     config = RecordConfig(
@@ -255,18 +279,18 @@ def create_record_config(args: Namespace) -> RecordConfig:
         dataset=dataset_config,
         policy=policy_config,
         teleop=None,  # No teleoperation, only policy control
-        display_data=args.display_data,
-        play_sounds=args.play_sounds,
+        display_data=display_data,
+        play_sounds=play_sounds,
         resume=False,
     )
 
     logger.info("Configuration created successfully")
-    logger.info(f"  Policy: {args.checkpoint}")
-    logger.info(f"  Robot: {args.robot_type} @ {args.robot_port}")
-    logger.info(f"  Camera: {args.camera_name} (index: {args.camera_index})")
-    logger.info(f"  Episodes: {args.num_episodes}")
-    logger.info(f"  Dataset: {args.repo_id}")
-    logger.info(f"  Push to Hub: {args.push_to_hub}")
+    logger.info(f"  Policy: {checkpoint}")
+    logger.info(f"  Robot: {robot_type} @ {robot_port}")
+    logger.info(f"  Camera: {camera_name} (index: {camera_index_str})")
+    logger.info(f"  Episodes: {num_episodes}")
+    logger.info(f"  Dataset: {repo_id}")
+    logger.info(f"  Push to Hub: {push_to_hub}")
 
     return config
 
@@ -275,17 +299,29 @@ def main():
     """Main inference entry point."""
     args = parse_args()
 
+    # Extract args to local variables
+    checkpoint = args.checkpoint
+    robot_type = args.robot_type
+    robot_port = args.robot_port
+    camera_name = args.camera_name
+    camera_index = args.camera_index
+    num_episodes = args.num_episodes
+    fps = args.fps
+    task_description = args.task_description
+    push_to_hub = args.push_to_hub
+    repo_id = args.repo_id
+
     logger.info("=" * 60)
     logger.info("ACT Policy Inference for SO101 Robot")
     logger.info("=" * 60)
     logger.info("")
     logger.info("Configuration:")
-    logger.info(f"  Checkpoint: {args.checkpoint}")
-    logger.info(f"  Robot: {args.robot_type}:{args.robot_port}")
-    logger.info(f"  Camera: {args.camera_name} @ index {args.camera_index}")
-    logger.info(f"  Episodes: {args.num_episodes}")
-    logger.info(f"  FPS: {args.fps}")
-    logger.info(f"  Task: {args.task_description}")
+    logger.info(f"  Checkpoint: {checkpoint}")
+    logger.info(f"  Robot: {robot_type}:{robot_port}")
+    logger.info(f"  Camera: {camera_name} @ index {camera_index}")
+    logger.info(f"  Episodes: {num_episodes}")
+    logger.info(f"  FPS: {fps}")
+    logger.info(f"  Task: {task_description}")
     logger.info("")
 
     try:
@@ -305,9 +341,9 @@ def main():
         logger.info(f"Dataset saved: {dataset.repo_id}")
         logger.info(f"Total episodes: {dataset.num_episodes}")
         logger.info(f"Total frames: {dataset.num_frames}")
-        if args.push_to_hub:
+        if push_to_hub:
             logger.info(
-                f"Dataset pushed to: https://huggingface.co/datasets/{args.repo_id}"
+                f"Dataset pushed to: https://huggingface.co/datasets/{repo_id}"
             )
         logger.info("=" * 60)
 

@@ -466,28 +466,42 @@ def main():
     """Main entry point."""
     args = parse_args()
 
+    # Extract args to local variables
+    server_host = args.server_host
+    server_port = args.server_port
+    robot_port = args.robot_port
+    camera_index_str = args.camera_index
+    camera_name = args.camera_name
+    camera_width = args.camera_width
+    camera_height = args.camera_height
+    camera_fps = args.camera_fps
+    num_episodes = args.num_episodes
+    episode_time = args.episode_time
+    reset_time = args.reset_time
+    fps = args.fps
+
     # Convert camera index to int if numeric
     camera_index: int | str
-    if args.camera_index.isdigit():
-        camera_index = int(args.camera_index)
+    if camera_index_str.isdigit():
+        camera_index = int(camera_index_str)
     else:
-        camera_index = args.camera_index
+        camera_index = camera_index_str
 
     # Create client
     client = InferenceClient(
-        server_host=args.server_host,
-        server_port=args.server_port,
+        server_host=server_host,
+        server_port=server_port,
     )
 
     try:
         # Connect to robot
         client.connect_robot(
-            robot_port=args.robot_port,
+            robot_port=robot_port,
             camera_index=camera_index,
-            camera_name=args.camera_name,
-            camera_width=args.camera_width,
-            camera_height=args.camera_height,
-            camera_fps=args.camera_fps,
+            camera_name=camera_name,
+            camera_width=camera_width,
+            camera_height=camera_height,
+            camera_fps=camera_fps,
         )
 
         # Connect to server
@@ -495,10 +509,10 @@ def main():
 
         # Run episodes
         client.run(
-            num_episodes=args.num_episodes,
-            episode_time_s=args.episode_time,
-            reset_time_s=args.reset_time,
-            fps=args.fps,
+            num_episodes=num_episodes,
+            episode_time_s=episode_time,
+            reset_time_s=reset_time,
+            fps=fps,
         )
 
     except KeyboardInterrupt:

@@ -29,6 +29,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    frequency = args.frequency
+
     leader, follower = initialize_robots(args, calibrate=True)
 
     rest_action = {
@@ -40,7 +42,7 @@ def main() -> None:
         "gripper.pos": 1.766304347826087,
     }
 
-    period = 1.0 / args.frequency
+    period = 1.0 / frequency
     while True:
         try:
             act = leader.get_action()

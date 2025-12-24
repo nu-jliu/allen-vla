@@ -4,7 +4,6 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pprint
 import uuid
 import time
 import logging
@@ -13,6 +12,7 @@ import cv2
 import numpy as np
 import shutil
 
+from datetime import datetime
 from argparse import ArgumentParser
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
@@ -70,37 +70,49 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    leader_port = args.leader_port
+    leader_id = args.leader_id
+    follower_port = args.follower_port
+    follower_id = args.follower_id
+    repo_id = args.repo_id
+    hz = args.hz
+    camera_index = args.camera_index
+    camera_width = args.camera_width
+    camera_height = args.camera_height
+    root = args.root
+    push = args.push
+
     logger.info("Starting data collection with configuration:")
-    logger.info(f"  Leader port: {args.leader_port}")
-    logger.info(f"  Leader ID: {args.leader_id}")
-    logger.info(f"  Follower port: {args.follower_port}")
-    logger.info(f"  Follower ID: {args.follower_id}")
-    logger.info(f"  Repo ID: {args.repo_id}")
-    logger.info(f"  Control frequency: {args.hz} Hz")
-    logger.info(f"  Camera index: {args.camera_index}")
-    logger.info(f"  Camera resolution: {args.camera_width}x{args.camera_height}")
-    logger.info(f"  Root directory: {args.root}")
+    logger.info(f"  Leader port: {leader_port}")
+    logger.info(f"  Leader ID: {leader_id}")
+    logger.info(f"  Follower port: {follower_port}")
+    logger.info(f"  Follower ID: {follower_id}")
+    logger.info(f"  Repo ID: {repo_id}")
+    logger.info(f"  Control frequency: {hz} Hz")
+    logger.info(f"  Camera index: {camera_index}")
+    logger.info(f"  Camera resolution: {camera_width}x{camera_height}")
+    logger.info(f"  Root directory: {root}")
 
     # Remove root directory if it exists
-    root_path = Path(args.root)
+    root_path = Path(root)
     if root_path.exists():
-        logger.warning(f"Root directory {args.root} already exists. Removing it...")
+        logger.warning(f"Root directory {root} already exists. Removing it...")
         shutil.rmtree(root_path)
-        logger.info(f"Removed existing directory: {args.root}")
+        logger.info(f"Removed existing directory: {root}")
 
     leader, follower = initialize_robots(args, calibrate=True)
 
-    cap = cv2.VideoCapture(args.camera_index)
+    cap = cv2.VideoCapture(camera_index)
     # Configure camera resolution and FPS
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.camera_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.camera_height)
-    cap.set(cv2.CAP_PROP_FPS, args.hz)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
+    cap.set(cv2.CAP_PROP_FPS, hz)
     # Verify camera properties match requested values
     cam_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    if cam_width != args.camera_width or cam_height != args.camera_height:
+    if cam_width != camera_width or cam_height != camera_height:
         logger.warning(
-            f"Camera resolution mismatch: requested {args.camera_width}x{args.camera_height}, "
+            f"Camera resolution mismatch: requested {camera_width}x{camera_height}, "
             f"got {cam_width}x{cam_height}. This may cause issues during training/inference."
         )
 
@@ -115,14 +127,15 @@ def main() -> None:
     logger.info(f"Observation features: {obs_features}")
     logger.info(f"Action features: {action_features}")
 
-    logger.info(f"Creating dataset: {args.repo_id}")
+    logger.info(f"Creating dataset: {repo_id}")
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
     dataset = LeRobotDataset.create(
-        repo_id=f"{args.repo_id}-{uuid.uuid4()}",
-        fps=args.hz,
+        repo_id=f"{repo_id}-{timestamp}-{uuid.uuid4()}",
+        fps=hz,
         features={**action_features, **obs_features},
         robot_type=follower.name,
         use_videos=True,
-        root=args.root,
+        root=root,
     )
     logger.info(f"Dataset features: {dataset.features}")
 
@@ -205,8 +218,8 @@ def main() -> None:
         "Press ENTER to start/stop recording. Press Ctrl+C to exit and upload dataset."
     )
 
-    logger.info(f"Starting teleoperation loop at {args.hz} Hz...")
-    period = 1.0 / args.hz
+    logger.info(f"Starting teleoperation loop at {hz} Hz...")
+    period = 1.0 / hz
 
     while True:
         try:
@@ -258,7 +271,7 @@ def main() -> None:
                     current_frame_count = frame_count
 
                 # Log progress every Hz frames (every 1 second)
-                if current_frame_count % args.hz == 0:
+                if current_frame_count % hz == 0:
                     logger.debug(f"Recording: {current_frame_count} frames captured")
             elif is_recording and not has_valid_image:
                 logger.warning(
@@ -276,7 +289,7 @@ def main() -> None:
             follower.disconnect()
             dataset.finalize()
             logger.info(f"Total episodes recorded: {episode_count}")
-            if args.push:
+            if push:
                 logger.info("Pushing dataset to Hugging Face Hub...")
                 dataset.push_to_hub()
                 logger.info("Dataset uploaded successfully. Exiting.")

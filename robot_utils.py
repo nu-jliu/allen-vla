@@ -61,30 +61,38 @@ def create_robot_configs(args: Namespace) -> tuple[SO101LeaderConfig, SO101Follo
     :return: Tuple of (leader_config, follower_config)
     :rtype: tuple[SO101LeaderConfig, SO101FollowerConfig]
     """
+    leader_port = args.leader_port
+    leader_id = args.leader_id
+    follower_port = args.follower_port
+    follower_id = args.follower_id
+
+    leader_calibration_dir = Path(
+        os.path.join(
+            CALIBRATION_DIR,
+            "teleoperators",
+            "so101_leader",
+        )
+    )
+    follower_calibration_dir = Path(
+        os.path.join(
+            CALIBRATION_DIR,
+            "robots",
+            "so101_follower",
+        )
+    )
+
     leader_config = SO101LeaderConfig(
-        port=args.leader_port,
+        port=leader_port,
         use_degrees=False,
-        id=args.leader_id,
-        calibration_dir=Path(
-            os.path.join(
-                CALIBRATION_DIR,
-                "teleoperators",
-                "so101_leader",
-            )
-        ),
+        id=leader_id,
+        calibration_dir=leader_calibration_dir,
     )
     follower_config = SO101FollowerConfig(
-        port=args.follower_port,
+        port=follower_port,
         disable_torque_on_disconnect=True,
         use_degrees=False,
-        id=args.follower_id,
-        calibration_dir=Path(
-            os.path.join(
-                CALIBRATION_DIR,
-                "robots",
-                "so101_follower",
-            )
-        ),
+        id=follower_id,
+        calibration_dir=follower_calibration_dir,
     )
     return leader_config, follower_config
 

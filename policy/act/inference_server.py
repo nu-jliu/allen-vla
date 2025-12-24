@@ -386,13 +386,20 @@ def main():
     """Main entry point."""
     args = parse_args()
 
+    # Extract args to local variables
+    checkpoint = args.checkpoint
+    device = args.device
+    task = args.task
+    host = args.host
+    port = args.port
+
     server = InferenceServer(
-        checkpoint=args.checkpoint,
-        device=args.device,
-        task=args.task,
+        checkpoint=checkpoint,
+        device=device,
+        task=task,
     )
 
-    server.start(host=args.host, port=args.port)
+    server.start(host=host, port=port)
 
 
 if __name__ == "__main__":
