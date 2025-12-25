@@ -1,5 +1,6 @@
 #!/bin/bash
-# Dataset will be pushed to: jliu6718/act-so101-MM-DD-YYYY
+# Dataset will be pushed to: jliu6718/act-so101-place_brick
+# Repo-ID format: {username}/{policy}-{robot}-{task}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -13,6 +14,7 @@ exec uv run data_collection/collect.py \
     --username jliu6718 \
     --policy-type act \
     --robot-type so101 \
+    --task place_brick \
     --hz 30 \
     --push \
     --camera-index 0 \

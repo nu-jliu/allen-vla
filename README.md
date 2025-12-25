@@ -411,11 +411,14 @@ uv run python data_collection/collect.py
 
 The script accepts the following command-line arguments:
 
+- `--username`: Hugging Face username (required)
+- `--policy-type`: Policy type, e.g., `act`, `diffusion` (required)
+- `--robot-type`: Robot type, e.g., `so101` (required)
+- `--task`: Task name for the dataset, e.g., `pick_place`, `stack_blocks` (required)
 - `--leader-port`: Serial port for the leader arm (default: `/dev/ttyACM0`)
 - `--leader-id`: ID for the leader arm (default: `my_leader`)
 - `--follower-port`: Serial port for the follower arm (default: `/dev/ttyACM1`)
 - `--follower-id`: ID for the follower arm (default: `my_follower`)
-- `--repo-id`: HuggingFace repository ID in format `username/repo-name` (default: `jliu6718/lerobot-so101`)
 - `--hz`: Control loop frequency in Hz (default: `30`)
 - `--push`: Push dataset to Hugging Face Hub after collection (flag)
 - `--camera-index`: Camera index or device path (default: `0`)
@@ -424,21 +427,33 @@ The script accepts the following command-line arguments:
 - `--root`: Root directory to save dataset locally
 - `--port`: Port to listen for telnet commands (default: `1234`)
 
+The repo-id is automatically constructed as `{username}/{policy_type}-{robot_type}-{task}`.
+
 **Example:**
 
 ```bash
-python data_collection/collect.py --repo-id your_username/my_dataset
+python data_collection/collect.py \
+  --username your_username \
+  --policy-type act \
+  --robot-type so101 \
+  --task pick_place
+# Creates dataset: your_username/act-so101-pick_place
 ```
 
 **Example with push to Hugging Face Hub:**
 
 ```bash
-python data_collection/collect.py --repo-id your_username/my_dataset --push
+python data_collection/collect.py \
+  --username your_username \
+  --policy-type act \
+  --robot-type so101 \
+  --task pick_place \
+  --push
 ```
 
 The data collection interface will:
 1. Connect to both leader and follower arms
-2. Create a LeRobot dataset with unique UUID and timestamp
+2. Create a LeRobot dataset with the specified task name
 3. Start a telnet server for remote control (connect via `telnet localhost 1234`)
 4. Run a separate image capture thread for continuous camera streaming
 5. Commands via telnet:
@@ -458,16 +473,43 @@ The ACT (Action Chunking Transformer) policy is fully implemented with training,
 **Quick start:**
 
 ```bash
-# Training
-python policy/act/train.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+# Training (from HuggingFace dataset)
+python policy/act/train.py \
+  --repo-id your_username/act-so101-pick_place \
+  --output-dir ./outputs/act_run1
 
-# Local inference
-python policy/act/inference.py --checkpoint ./outputs/act_run1/pretrained_model --robot-port /dev/ttyACM0 --camera-index 0
+# Training (from local dataset with push to Hub)
+python policy/act/train.py \
+  --local-dir ./data/your_username/act-so101-pick_place \
+  --output-dir ./outputs/act_run1 \
+  --username your_username \
+  --policy-type act \
+  --robot-type so101 \
+  --task pick_place \
+  --push
+
+# Local inference (saves eval dataset as your_username/eval_act-so101-pick_place)
+python policy/act/inference.py \
+  --checkpoint ./outputs/act_run1/pretrained_model \
+  --robot-port /dev/ttyACM0 \
+  --camera-index 0 \
+  --username your_username \
+  --policy-type act \
+  --robot-type so101 \
+  --task pick_place
 
 # Client-server inference (remote GPU)
 python policy/act/inference_server.py --checkpoint ./outputs/act_run1/pretrained_model --port 8000  # GPU server
 python policy/act/inference_client.py --server-host <gpu_ip> --robot-port /dev/ttyACM0 --camera-index 0  # Robot
 ```
+
+**Naming Convention:**
+
+| Script | Repo-ID Format |
+|--------|----------------|
+| Data Collection | `{username}/{policy}-{robot}-{task}` |
+| Training (push) | `{username}/{policy}-{robot}-{task}` |
+| Inference (eval) | `{username}/eval_{policy}-{robot}-{task}` |
 
 For detailed documentation including all arguments and examples, see **[docs/act.md](docs/act.md)**.
 

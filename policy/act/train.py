@@ -78,7 +78,7 @@ def parse_args() -> Namespace:
     dataset_source.add_argument(
         "--repo-id",
         type=str,
-        help="HuggingFace Hub dataset repo ID (e.g., username/policy-robot-MM-DD-YYYY)",
+        help="HuggingFace Hub dataset repo ID (e.g., username/policy-robot-task)",
     )
     dataset_source.add_argument(
         "--local-dir",
@@ -111,6 +111,11 @@ def parse_args() -> Namespace:
         "--robot-type",
         type=str,
         help="Robot type e.g. so101 (required with --local-dir and --push)",
+    )
+    push_group.add_argument(
+        "--task",
+        type=str,
+        help="Task name for the model repo (required with --local-dir and --push)",
     )
 
     # Training hyperparameters
@@ -247,6 +252,7 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     username = args.username
     policy_type = args.policy_type
     robot_type = args.robot_type
+    task = args.task
     output_dir = args.output_dir
     batch_size = args.batch_size
     steps = args.steps
@@ -269,14 +275,12 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
         if repo_id is not None:
             # Using HuggingFace dataset, use same repo_id for model
             policy_repo_id = repo_id
-        elif all([username, policy_type, robot_type]):
+        elif all([username, policy_type, robot_type, task]):
             # Using local dataset with push, construct repo_id from components
-            from datetime import datetime
-            date_str = datetime.now().strftime("%m-%d-%Y")
-            policy_repo_id = f"{username}/{policy_type}-{robot_type}-{date_str}"
+            policy_repo_id = f"{username}/{policy_type}-{robot_type}-{task}"
         else:
             raise ValueError(
-                "When using --push with --local-dir, you must also specify --username, --policy-type, and --robot-type"
+                "When using --push with --local-dir, you must also specify --username, --policy-type, --robot-type, and --task"
             )
     else:
         policy_repo_id = None

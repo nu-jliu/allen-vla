@@ -38,7 +38,7 @@ def parse_args() -> Namespace:
         epilog="""
 Examples:
   # Basic evaluation with local checkpoint
-  # Evaluation repo ID will be: my_username/eval_act-so101-MM-DD-YYYY
+  # Evaluation repo ID will be: my_username/eval_act-so101-pick_place
   python policy/act/inference.py \\
     --checkpoint ./outputs/act_training/pretrained_model \\
     --robot-port /dev/ttyACM0 \\
@@ -46,19 +46,21 @@ Examples:
     --num-episodes 10 \\
     --username my_username \\
     --policy-type act \\
-    --robot-type so101
+    --robot-type so101 \\
+    --task pick_place
 
   # Evaluation with HuggingFace Hub model
-  # Checkpoint format: username/policy-robot-MM-DD-YYYY
-  # Evaluation repo ID will be: username/eval_act-so101-MM-DD-YYYY
+  # Checkpoint format: username/policy-robot-task
+  # Evaluation repo ID will be: username/eval_act-so101-pick_place
   python policy/act/inference.py \\
-    --checkpoint username/act-so101-12-24-2025 \\
+    --checkpoint username/act-so101-pick_place \\
     --robot-port /dev/ttyACM0 \\
     --camera-index 0 \\
     --num-episodes 5 \\
     --username username \\
     --policy-type act \\
     --robot-type so101 \\
+    --task pick_place \\
     --push-to-hub
         """,
     )
@@ -100,6 +102,12 @@ Examples:
         type=str,
         required=True,
         help="Robot type (e.g., so101)",
+    )
+    required.add_argument(
+        "--task",
+        type=str,
+        required=True,
+        help="Task name for the evaluation dataset (e.g., pick_place, stack_blocks)",
     )
 
     # Robot configuration
@@ -237,10 +245,9 @@ def create_record_config(args: Namespace) -> RecordConfig:
     username = args.username
     policy_type = args.policy_type
     robot_type = args.robot_type
-    # Construct repo_id as {username}/eval_{policy}-{robot}-{MM}-{dd}-{yyyy}
-    from datetime import datetime
-    date_str = datetime.now().strftime("%m-%d-%Y")
-    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{date_str}"
+    task = args.task
+    # Construct repo_id as {username}/eval_{policy}-{robot}-{task}
+    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{task}"
     task_description = args.task_description
     root = args.root
     fps = args.fps
@@ -330,10 +337,9 @@ def main():
     username = args.username
     policy_type = args.policy_type
     robot_type = args.robot_type
-    # Construct repo_id as {username}/eval_{policy}-{robot}-{MM}-{dd}-{yyyy}
-    from datetime import datetime
-    date_str = datetime.now().strftime("%m-%d-%Y")
-    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{date_str}"
+    task = args.task
+    # Construct repo_id as {username}/eval_{policy}-{robot}-{task}
+    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{task}"
 
     logger.info("=" * 60)
     logger.info("ACT Policy Inference for SO101 Robot")

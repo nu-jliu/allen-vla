@@ -12,7 +12,6 @@ import cv2
 import numpy as np
 import shutil
 
-from datetime import datetime
 from argparse import ArgumentParser
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
@@ -44,6 +43,12 @@ def main() -> None:
         type=str,
         required=True,
         help="Robot type (e.g., so101)",
+    )
+    parser.add_argument(
+        "--task",
+        type=str,
+        required=True,
+        help="Task name for the dataset (e.g., pick_place, stack_blocks)",
     )
     parser.add_argument(
         "--hz",
@@ -95,9 +100,9 @@ def main() -> None:
     username = args.username
     policy_type = args.policy_type
     robot_type = args.robot_type
-    # Construct repo_id as {username}/{policy}-{robot}-{MM}-{dd}-{yyyy}
-    date_str = datetime.now().strftime("%m-%d-%Y")
-    repo_id = f"{username}/{policy_type}-{robot_type}-{date_str}"
+    task = args.task
+    # Construct repo_id as {username}/{policy}-{robot}-{task}
+    repo_id = f"{username}/{policy_type}-{robot_type}-{task}"
     hz = args.hz
     camera_index = args.camera_index
     camera_width = args.camera_width
@@ -423,7 +428,7 @@ def main() -> None:
                         "action": action_array,
                         "observation.state": obs_state_array,
                         "observation.images.front": current_image,
-                        "task": "soarm_grasp",
+                        "task": task,
                     }
 
                     dataset.add_frame(frame=frame)
