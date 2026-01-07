@@ -205,20 +205,32 @@ allen-vla/
 │   ├── __init__.py
 │   └── collect.py                # Main data collection script
 ├── example/
-│   ├── data_collection.bash      # Example: data collection with all options
-│   ├── inference_act.bash        # Example: local ACT inference
-│   ├── inference_act_client.bash # Example: client for remote inference
-│   ├── inference_act_server.bash # Example: server for remote inference
-│   ├── teleop.bash               # Example: teleoperation
-│   └── train_act.bash            # Example: ACT training
+│   ├── data_collection.bash      # Unified data collection script (ACT/Diffusion)
+│   ├── act/                      # ACT policy example scripts
+│   │   ├── inference_act.bash
+│   │   ├── inference_act_client.bash
+│   │   ├── inference_act_server.bash
+│   │   └── train_act.bash
+│   ├── diffusion/                # Diffusion policy example scripts
+│   │   ├── inference_diffusion.bash
+│   │   ├── inference_diffusion_client.bash
+│   │   ├── inference_diffusion_server.bash
+│   │   └── train_diffusion.bash
+│   └── teleop.bash               # Example: teleoperation
 ├── policy/
 │   ├── __init__.py
-│   └── act/
+│   ├── act/
+│   │   ├── __init__.py
+│   │   ├── train.py              # Training script for ACT policy
+│   │   ├── inference.py          # Local inference (policy + robot on same machine)
+│   │   ├── inference_server.py   # TCP server for remote inference (GPU machine)
+│   │   └── inference_client.py   # Robot client (connects to inference server)
+│   └── diffusion/
 │       ├── __init__.py
-│       ├── train_act.py          # Training script for ACT policy
-│       ├── inference.py          # Local inference (policy + robot on same machine)
-│       ├── inference_server.py   # TCP server for remote inference (GPU machine)
-│       └── inference_client.py   # Robot client (connects to inference server)
+│       ├── train.py              # Training script for Diffusion policy
+│       ├── inference.py          # Local inference
+│       ├── inference_server.py   # TCP server for remote inference
+│       └── inference_client.py   # Robot client
 ├── scripts/
 │   ├── deploy_remote.bash        # Deploy project files to remote machine
 │   ├── download_data.bash        # Download collected data from remote machine
@@ -395,61 +407,55 @@ The teleoperation interface will:
 
 ![Data Collection Demo](assets/data_collection_video.gif)
 
-Collect demonstration datasets for training VLA models:
+Collect demonstration datasets for training VLA models using the unified data collection script:
 
 ```bash
-python data_collection/collect.py
+# For ACT policy
+./example/data_collection.bash act
+
+# For Diffusion policy
+./example/data_collection.bash diffusion
+
+# With custom task
+./example/data_collection.bash act --task pick_cube
 ```
 
-Or using uv:
+**Script Features:**
+
+All example scripts support:
+- `-h, --help` - Show detailed usage information
+- `--dry-run` - Preview configuration without executing
+- `--task TASK` - Specify task name (optional)
+- Environment variable overrides for all parameters
+
+**Common Environment Variables:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LEADER_PORT` | Leader arm serial port | `/dev/ttyACM1` |
+| `FOLLOWER_PORT` | Follower arm serial port | `/dev/ttyACM0` |
+| `USERNAME` | HuggingFace username | `jliu6718` |
+| `TASK` | Task name | `place_brick` |
+| `CAMERA_INDEX` | Camera device index | `0` |
+| `PUSH_TO_HUB` | Push to HuggingFace Hub | `true` |
+
+**Example with custom configuration:**
 
 ```bash
-uv run python data_collection/collect.py
+# Override task via argument
+./example/data_collection.bash act --task pick_cube
+
+# Override task and username via environment
+TASK=pick_cube USERNAME=myuser ./example/data_collection.bash diffusion
+
+# Preview configuration without running
+./example/data_collection.bash act --dry-run
+
+# Show all available options
+./example/data_collection.bash --help
 ```
-
-> **Example**: See [`example/data_collection.bash`](example/data_collection.bash) for a complete example.
-
-The script accepts the following command-line arguments:
-
-- `--username`: Hugging Face username (required)
-- `--policy-type`: Policy type, e.g., `act`, `diffusion` (required)
-- `--robot-type`: Robot type, e.g., `so101` (required)
-- `--task`: Task name for the dataset, e.g., `pick_place`, `stack_blocks` (required)
-- `--leader-port`: Serial port for the leader arm (default: `/dev/ttyACM0`)
-- `--leader-id`: ID for the leader arm (default: `my_leader`)
-- `--follower-port`: Serial port for the follower arm (default: `/dev/ttyACM1`)
-- `--follower-id`: ID for the follower arm (default: `my_follower`)
-- `--hz`: Control loop frequency in Hz (default: `30`)
-- `--push`: Push dataset to Hugging Face Hub after collection (flag)
-- `--camera-index`: Camera index or device path (default: `0`)
-- `--camera-width`: Camera frame width (default: `640`)
-- `--camera-height`: Camera frame height (default: `480`)
-- `--root`: Root directory to save dataset locally
-- `--port`: Port to listen for telnet commands (default: `1234`)
 
 The repo-id is automatically constructed as `{username}/{policy_type}-{robot_type}-{task}`.
-
-**Example:**
-
-```bash
-python data_collection/collect.py \
-  --username your_username \
-  --policy-type act \
-  --robot-type so101 \
-  --task pick_place
-# Creates dataset: your_username/act-so101-pick_place
-```
-
-**Example with push to Hugging Face Hub:**
-
-```bash
-python data_collection/collect.py \
-  --username your_username \
-  --policy-type act \
-  --robot-type so101 \
-  --task pick_place \
-  --push
-```
 
 The data collection interface will:
 1. Connect to both leader and follower arms
@@ -462,7 +468,7 @@ The data collection interface will:
    - `q` - Quit and save dataset
 6. Capture observations and actions at the specified Hz (default: 30) during recording
 7. Save episodes to the dataset with video encoding
-8. Press `Ctrl+C` to finalize and optionally upload the dataset to Hugging Face Hub (with `--push` flag)
+8. Press `Ctrl+C` to finalize and optionally upload the dataset to Hugging Face Hub
 
 ### ACT Policy
 
@@ -470,37 +476,73 @@ The data collection interface will:
 
 The ACT (Action Chunking Transformer) policy is fully implemented with training, local inference, and client-server inference for remote GPU setups.
 
-**Quick start:**
+**Quick Start with Example Scripts:**
 
 ```bash
-# Training (from HuggingFace dataset)
-python policy/act/train.py \
-  --repo-id your_username/act-so101-pick_place \
-  --output-dir ./outputs/act_run1
+# Training
+./example/act/train_act.bash
 
-# Training (from local dataset with push to Hub)
-python policy/act/train.py \
-  --local-dir ./data/your_username/act-so101-pick_place \
-  --output-dir ./outputs/act_run1 \
-  --username your_username \
-  --policy-type act \
-  --robot-type so101 \
-  --task pick_place \
-  --push
-
-# Local inference (saves eval dataset as your_username/eval_act-so101-pick_place)
-python policy/act/inference.py \
-  --checkpoint ./outputs/act_run1/pretrained_model \
-  --robot-port /dev/ttyACM0 \
-  --camera-index 0 \
-  --username your_username \
-  --policy-type act \
-  --robot-type so101 \
-  --task pick_place
+# Local inference
+./example/act/inference_act.bash
 
 # Client-server inference (remote GPU)
-python policy/act/inference_server.py --checkpoint ./outputs/act_run1/pretrained_model --port 8000  # GPU server
-python policy/act/inference_client.py --server-host <gpu_ip> --robot-port /dev/ttyACM0 --camera-index 0  # Robot
+./example/act/inference_act_server.bash  # On GPU server
+./example/act/inference_act_client.bash  # On robot machine
+```
+
+**Training Configuration:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REPO_ID` | Dataset repo ID on HuggingFace | `jliu6718/act-so101-place_brick` |
+| `OUTPUT_DIR` | Model output directory | `$PROJECT_ROOT/model` |
+| `BATCH_SIZE` | Training batch size | `32` |
+| `STEPS` | Number of training steps | `10000` |
+| `PUSH_TO_HUB` | Push model to HuggingFace | `true` |
+| `RESUME` | Checkpoint path to resume from | (none) |
+
+**Training Examples:**
+
+```bash
+# Custom training configuration
+REPO_ID=myuser/act-so101-pick_cube STEPS=20000 ./example/act/train_act.bash
+
+# Using --task to override task name (updates REPO_ID automatically)
+./example/act/train_act.bash --task pick_cube
+
+# Resume training from checkpoint
+RESUME=/path/to/checkpoint.pt ./example/act/train_act.bash
+
+# Preview configuration
+./example/act/train_act.bash --dry-run
+```
+
+**Inference Configuration:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CHECKPOINT` | Model checkpoint | `jliu6718/act-so101-place_brick` |
+| `ROBOT_PORT` | Robot serial port | `/dev/ttyACM0` |
+| `CAMERA_INDEX` | Camera device index | `0` |
+| `FPS` | Inference frequency | `30` |
+| `DISPLAY_VIDEO` | Show video feed | `false` |
+
+**Client-Server Inference:**
+
+For running inference on a remote GPU while the robot is on a different machine:
+
+```bash
+# On GPU server
+CHECKPOINT=myuser/act-so101-task PORT=8000 ./example/act/inference_act_server.bash
+
+# On GPU server using --task to override
+./example/act/inference_act_server.bash --task pick_cube
+
+# On robot machine
+SERVER_HOST=192.168.1.100 ./example/act/inference_act_client.bash
+
+# Test connection before starting
+./example/act/inference_act_client.bash --test-connection
 ```
 
 **Naming Convention:**
@@ -512,6 +554,105 @@ python policy/act/inference_client.py --server-host <gpu_ip> --robot-port /dev/t
 | Inference (eval) | `{username}/eval_{policy}-{robot}-{task}` |
 
 For detailed documentation including all arguments and examples, see **[docs/act.md](docs/act.md)**.
+
+### Diffusion Policy
+
+The Diffusion policy provides an alternative approach using diffusion models for action prediction.
+
+**Quick Start with Example Scripts:**
+
+```bash
+# Training
+./example/diffusion/train_diffusion.bash
+
+# Local inference
+./example/diffusion/inference_diffusion.bash
+
+# Client-server inference (remote GPU)
+./example/diffusion/inference_diffusion_server.bash  # On GPU server
+./example/diffusion/inference_diffusion_client.bash  # On robot machine
+```
+
+**Training Configuration:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REPO_ID` | Dataset repo ID on HuggingFace | `jliu6718/diffusion-so101-place_brick` |
+| `LOCAL_DIR` | Local dataset directory (overrides REPO_ID) | (none) |
+| `OUTPUT_DIR` | Model output directory | `$PROJECT_ROOT/model` |
+| `BATCH_SIZE` | Training batch size | `8` |
+| `STEPS` | Number of training steps | `100000` |
+| `HORIZON` | Prediction horizon | `16` |
+| `N_ACTION_STEPS` | Number of action steps | `8` |
+| `N_OBS_STEPS` | Number of observation steps | `2` |
+| `LR` | Learning rate | `1e-4` |
+| `SAVE_FREQ` | Checkpoint save frequency | `5000` |
+
+**Training Examples:**
+
+```bash
+# Custom training configuration
+REPO_ID=myuser/diffusion-so101-pick_cube STEPS=50000 ./example/diffusion/train_diffusion.bash
+
+# Using --task to override task name (updates REPO_ID automatically)
+./example/diffusion/train_diffusion.bash --task pick_cube
+
+# Train from local dataset
+LOCAL_DIR=./data/my_dataset ./example/diffusion/train_diffusion.bash
+
+# Custom diffusion hyperparameters
+HORIZON=32 N_ACTION_STEPS=16 ./example/diffusion/train_diffusion.bash
+```
+
+**Inference Configuration:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CHECKPOINT` | Model checkpoint | `jliu6718/diffusion-so101-place_brick` |
+| `ROBOT_PORT` | Robot serial port | `/dev/ttyACM0` |
+| `CAMERA_INDEX` | Camera device index | `0` |
+| `NUM_EPISODES` | Number of episodes to run | `10` |
+| `EPISODE_TIME` | Episode duration (seconds) | `60` |
+| `RESET_TIME` | Reset time between episodes | `60` |
+
+**Client-Server Inference:**
+
+```bash
+# On GPU server
+CHECKPOINT=myuser/diffusion-so101-task PORT=8000 ./example/diffusion/inference_diffusion_server.bash
+
+# On GPU server using --task to override
+./example/diffusion/inference_diffusion_server.bash --task pick_cube
+
+# On robot machine
+SERVER_HOST=192.168.1.100 ./example/diffusion/inference_diffusion_client.bash
+
+# Test connection before starting
+./example/diffusion/inference_diffusion_client.bash --test-connection
+```
+
+### Script Features Summary
+
+All example scripts in `example/`, `example/act/`, and `example/diffusion/` include:
+
+| Feature | Description |
+|---------|-------------|
+| `-h, --help` | Show detailed usage and all environment variables |
+| `--dry-run` | Preview configuration and dependency checks without running |
+| `--task TASK` | Override task name (updates REPO_ID/CHECKPOINT automatically) |
+| Color output | Color-coded status messages (green=success, yellow=warning, red=error) |
+| Dependency checks | Validates uv, GPU, serial ports, cameras before execution |
+| Environment variables | All parameters configurable via environment variables |
+
+**Common Checks Performed:**
+
+- `uv` package manager availability
+- Serial port existence (with fallback listing)
+- Camera device availability
+- GPU/CUDA availability (for training/server scripts)
+- Port availability (for server scripts)
+- Disk space (for training scripts)
+- HuggingFace authentication (when pushing to Hub)
 
 ## Todo List
 
@@ -531,6 +672,9 @@ For detailed documentation including all arguments and examples, see **[docs/act
 - [x] Implement ACT local inference/evaluation pipeline
 - [x] Implement ACT client-server inference (remote GPU support)
 - [x] Test deployed ACT model on real hardware
+- [x] Implement Diffusion policy training pipeline
+- [x] Implement Diffusion policy local inference/evaluation pipeline
+- [x] Implement Diffusion policy client-server inference
 - [ ] Implement π0 model training pipeline
 - [ ] Implement π0.5 model training pipeline
 - [ ] Add additional VLA models as needed
@@ -540,6 +684,7 @@ For detailed documentation including all arguments and examples, see **[docs/act
 ### Documentation & Experimentation
 - [x] Document hardware setup and calibration procedures
 - [x] Create training guides for ACT model
+- [x] Create training guides for Diffusion model
 - [ ] Create training guides for π0/π0.5 models
 - [ ] Log experimental results and hyperparameters
 - [ ] Build visualization tools for trajectories and predictions
