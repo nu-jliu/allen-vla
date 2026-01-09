@@ -470,9 +470,13 @@ The data collection interface will:
 7. Save episodes to the dataset with video encoding
 8. Press `Ctrl+C` to finalize and optionally upload the dataset to Hugging Face Hub
 
-### ACT Policy
+### Inference Comparison
 
-![Inference Demo](assets/inference_demo.gif)
+| ACT Policy | Diffusion Policy |
+|:----------:|:----------------:|
+| ![ACT Inference](assets/inference_demo.gif) | ![Diffusion Inference](assets/diffusion_inference_demo.gif) |
+
+### ACT Policy
 
 The ACT (Action Chunking Transformer) policy is fully implemented with training, local inference, and client-server inference for remote GPU setups.
 
