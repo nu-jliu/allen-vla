@@ -33,14 +33,17 @@ def main() -> None:
 
     leader, follower = initialize_robots(args, calibrate=True)
 
-    rest_action = {
-        "shoulder_pan.pos": 1.7148014440433172,
-        "shoulder_lift.pos": -99.82721382289417,
-        "elbow_flex.pos": 100.0,
-        "wrist_flex.pos": 76.12988152698551,
-        "wrist_roll.pos": -1.7338217338217419,
-        "gripper.pos": 1.766304347826087,
+    # Record follower's initial joint positions right after connection
+    initial_obs = follower.get_observation()
+    initial_position = {
+        "shoulder_pan.pos": initial_obs["shoulder_pan.pos"],
+        "shoulder_lift.pos": initial_obs["shoulder_lift.pos"],
+        "elbow_flex.pos": initial_obs["elbow_flex.pos"],
+        "wrist_flex.pos": initial_obs["wrist_flex.pos"],
+        "wrist_roll.pos": initial_obs["wrist_roll.pos"],
+        "gripper.pos": initial_obs["gripper.pos"],
     }
+    logger.info(f"Recorded follower initial position: {initial_position}")
 
     period = 1.0 / frequency
     while True:
@@ -53,7 +56,18 @@ def main() -> None:
             time.sleep(period)
 
         except KeyboardInterrupt:
-            follower.send_action(rest_action)
+            logger.info("Moving follower to initial position before disconnect...")
+            follower.send_action(initial_position)
+            # Wait for robot to reach initial position
+            while True:
+                obs = follower.get_observation()
+                max_diff = max(
+                    abs(obs[name] - initial_position[name])
+                    for name in initial_position.keys()
+                )
+                if max_diff < 1.0:  # Within 1 degree tolerance
+                    break
+                time.sleep(0.05)
             leader.disconnect()
             follower.disconnect()
             return

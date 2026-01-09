@@ -132,6 +132,18 @@ def main() -> None:
 
     leader, follower = initialize_robots(args, calibrate=True)
 
+    # Record follower's initial joint positions right after connection
+    initial_obs = follower.get_observation()
+    initial_position = {
+        "shoulder_pan.pos": initial_obs["shoulder_pan.pos"],
+        "shoulder_lift.pos": initial_obs["shoulder_lift.pos"],
+        "elbow_flex.pos": initial_obs["elbow_flex.pos"],
+        "wrist_flex.pos": initial_obs["wrist_flex.pos"],
+        "wrist_roll.pos": initial_obs["wrist_roll.pos"],
+        "gripper.pos": initial_obs["gripper.pos"],
+    }
+    logger.info(f"Recorded follower initial position: {initial_position}")
+
     cap = cv2.VideoCapture(camera_index)
     # Configure camera resolution and FPS
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
@@ -449,6 +461,18 @@ def main() -> None:
         except KeyboardInterrupt:
             logger.info("Shutdown signal received (Ctrl+C)")
             running = False
+            logger.info("Moving follower to initial position before disconnect...")
+            follower.send_action(initial_position)
+            # Wait for robot to reach initial position
+            while True:
+                obs = follower.get_observation()
+                max_diff = max(
+                    abs(obs[name] - initial_position[name])
+                    for name in initial_position.keys()
+                )
+                if max_diff < 1.0:  # Within 1 degree tolerance
+                    break
+                time.sleep(0.05)
             logger.info("Disconnecting from leader robot...")
             leader.disconnect()
             logger.info("Disconnecting from follower robot...")
@@ -467,6 +491,18 @@ def main() -> None:
             logger.info("Attempting cleanup...")
             running = False
             try:
+                logger.info("Moving follower to initial position before disconnect...")
+                follower.send_action(initial_position)
+                # Wait for robot to reach initial position
+                while True:
+                    obs = follower.get_observation()
+                    max_diff = max(
+                        abs(obs[name] - initial_position[name])
+                        for name in initial_position.keys()
+                    )
+                    if max_diff < 1.0:  # Within 1 degree tolerance
+                        break
+                    time.sleep(0.05)
                 leader.disconnect()
                 follower.disconnect()
             except Exception as cleanup_error:

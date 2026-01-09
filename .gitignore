@@ -209,3 +209,6 @@ __marimo__/
 # Model
 **/model/**
 **/data/**
+
+# Claude Code
+CLAUDE.md

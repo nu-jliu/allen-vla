@@ -1,7 +1,7 @@
 #!/bin/bash
-# Inference Client Script for Diffusion Policy
+# Inference Client Script for ACT Policy
 # Connects to a remote inference server for distributed inference
-# Use with inference_diffusion_server.bash on a GPU machine
+# Use with inference_act_server.bash on a GPU machine
 
 set -e
 
@@ -27,16 +27,12 @@ CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
 SERVER_HOST="${SERVER_HOST:-192.168.100.146}"
 SERVER_PORT="${SERVER_PORT:-8000}"
-FPS="${FPS:-30}"
-NUM_EPISODES="${NUM_EPISODES:-10}"
-EPISODE_TIME="${EPISODE_TIME:-60}"
-RESET_TIME="${RESET_TIME:-60}"
 
 # Print banner
 print_banner() {
     echo -e "${CYAN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║      Diffusion Policy - Inference Client Script           ║"
+    echo "║          ACT Policy - Inference Client Script             ║"
     echo "║        (Connects to remote inference server)              ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -61,17 +57,13 @@ print_usage() {
     echo "  CAMERA_FPS          Camera FPS (default: 30)"
     echo "  SERVER_HOST         Inference server hostname/IP (default: 192.168.100.146)"
     echo "  SERVER_PORT         Inference server port (default: 8000)"
-    echo "  FPS                 Control frequency in Hz (default: 30)"
-    echo "  NUM_EPISODES        Number of episodes (default: 10)"
-    echo "  EPISODE_TIME        Episode duration in seconds (default: 60)"
-    echo "  RESET_TIME          Reset time between episodes (default: 60)"
     echo ""
     echo -e "${BLUE}Example:${NC}"
     echo "  SERVER_HOST=10.0.0.5 SERVER_PORT=8080 $0"
     echo ""
     echo -e "${BLUE}Note:${NC}"
     echo "  Make sure the inference server is running on the remote machine."
-    echo "  Start it with: ./inference_diffusion_server.bash"
+    echo "  Start it with: ./inference_act_server.bash"
 }
 
 # Print configuration
@@ -93,12 +85,6 @@ print_config() {
     echo -e "  ${YELLOW}Server Host:${NC}     ${SERVER_HOST}"
     echo -e "  ${YELLOW}Server Port:${NC}     ${SERVER_PORT}"
     echo -e "  ${YELLOW}Server URL:${NC}      http://${SERVER_HOST}:${SERVER_PORT}"
-    echo ""
-    echo -e "${BLUE}Episode Configuration:${NC}"
-    echo -e "  ${YELLOW}FPS:${NC}             ${FPS}"
-    echo -e "  ${YELLOW}Num Episodes:${NC}    ${NUM_EPISODES}"
-    echo -e "  ${YELLOW}Episode Time:${NC}    ${EPISODE_TIME}s"
-    echo -e "  ${YELLOW}Reset Time:${NC}      ${RESET_TIME}s"
     echo ""
 }
 
@@ -139,34 +125,22 @@ check_dependencies() {
 test_server_connection() {
     echo -e "${BLUE}Testing server connection...${NC}"
 
-    # Check if curl or wget is available
-    if command -v curl &> /dev/null; then
-        echo -e "  Testing connection to http://${SERVER_HOST}:${SERVER_PORT}..."
-        if curl -s --connect-timeout 5 "http://${SERVER_HOST}:${SERVER_PORT}/health" > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✓${NC} Server is reachable and responding"
-            return 0
-        elif curl -s --connect-timeout 5 "http://${SERVER_HOST}:${SERVER_PORT}/" > /dev/null 2>&1; then
-            echo -e "  ${GREEN}✓${NC} Server is reachable (no health endpoint)"
-            return 0
-        else
-            echo -e "  ${RED}✗${NC} Cannot connect to server at http://${SERVER_HOST}:${SERVER_PORT}"
-            echo -e "    Please verify:"
-            echo -e "      1. Server is running (./inference_diffusion_server.bash)"
-            echo -e "      2. Correct SERVER_HOST and SERVER_PORT"
-            echo -e "      3. Network connectivity and firewall rules"
-            return 1
-        fi
-    elif command -v nc &> /dev/null; then
-        echo -e "  Testing TCP connection to ${SERVER_HOST}:${SERVER_PORT}..."
+    # The inference server uses raw TCP sockets (not HTTP), so use nc for testing
+    echo -e "  Testing TCP connection to ${SERVER_HOST}:${SERVER_PORT}..."
+    if command -v nc &> /dev/null; then
         if nc -z -w 5 "${SERVER_HOST}" "${SERVER_PORT}" 2>/dev/null; then
             echo -e "  ${GREEN}✓${NC} Server port is reachable"
             return 0
         else
             echo -e "  ${RED}✗${NC} Cannot connect to ${SERVER_HOST}:${SERVER_PORT}"
+            echo -e "    Please verify:"
+            echo -e "      1. Server is running (./inference_act_server.bash)"
+            echo -e "      2. Correct SERVER_HOST and SERVER_PORT"
+            echo -e "      3. Network connectivity and firewall rules"
             return 1
         fi
     else
-        echo -e "  ${YELLOW}⚠${NC} Neither curl nor nc available, skipping connection test"
+        echo -e "  ${YELLOW}⚠${NC} nc not available, skipping connection test"
         return 0
     fi
 }
@@ -178,7 +152,6 @@ main() {
     # Parse arguments
     DRY_RUN=false
     TEST_CONNECTION=false
-    EXTRA_ARGS=()
     while [[ $# -gt 0 ]]; do
         case $1 in
             -h|--help)
@@ -194,9 +167,9 @@ main() {
                 shift
                 ;;
             *)
-                # Collect extra arguments to pass through
-                EXTRA_ARGS+=("$1")
-                shift
+                echo -e "${RED}Error:${NC} Unknown option: $1"
+                print_usage
+                exit 1
                 ;;
         esac
     done
@@ -226,12 +199,11 @@ main() {
 
     echo -e "${GREEN}Starting inference client...${NC}"
     echo -e "${CYAN}Connecting to server at http://${SERVER_HOST}:${SERVER_PORT}${NC}"
-    echo -e "${CYAN}Running ${NUM_EPISODES} episodes, ${EPISODE_TIME}s each${NC}"
     echo -e "${CYAN}Press Ctrl+C to stop${NC}"
     echo ""
 
     cd "${PROJECT_ROOT}"
-    exec uv run policy/diffusion/inference_client.py \
+    exec uv run policy/act/inference_client.py \
         --robot-port "${ROBOT_PORT}" \
         --robot-id "${ROBOT_ID}" \
         --camera-index "${CAMERA_INDEX}" \
@@ -240,12 +212,7 @@ main() {
         --camera-height "${CAMERA_HEIGHT}" \
         --camera-fps "${CAMERA_FPS}" \
         --server-host "${SERVER_HOST}" \
-        --server-port "${SERVER_PORT}" \
-        --fps "${FPS}" \
-        --num-episodes "${NUM_EPISODES}" \
-        --episode-time "${EPISODE_TIME}" \
-        --reset-time "${RESET_TIME}" \
-        "${EXTRA_ARGS[@]}"
+        --server-port "${SERVER_PORT}"
 }
 
 main "$@"

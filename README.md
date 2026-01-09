@@ -207,15 +207,15 @@ allen-vla/
 ├── example/
 │   ├── data_collection.bash      # Unified data collection script (ACT/Diffusion)
 │   ├── act/                      # ACT policy example scripts
-│   │   ├── inference_act.bash
-│   │   ├── inference_act_client.bash
-│   │   ├── inference_act_server.bash
-│   │   └── train_act.bash
+│   │   ├── inference.bash
+│   │   ├── inference_client.bash
+│   │   ├── inference_server.bash
+│   │   └── train.bash
 │   ├── diffusion/                # Diffusion policy example scripts
-│   │   ├── inference_diffusion.bash
-│   │   ├── inference_diffusion_client.bash
-│   │   ├── inference_diffusion_server.bash
-│   │   └── train_diffusion.bash
+│   │   ├── inference.bash
+│   │   ├── inference_client.bash
+│   │   ├── inference_server.bash
+│   │   └── train.bash
 │   └── teleop.bash               # Example: teleoperation
 ├── policy/
 │   ├── __init__.py
@@ -480,14 +480,14 @@ The ACT (Action Chunking Transformer) policy is fully implemented with training,
 
 ```bash
 # Training
-./example/act/train_act.bash
+./example/act/train.bash
 
 # Local inference
-./example/act/inference_act.bash
+./example/act/inference.bash
 
 # Client-server inference (remote GPU)
-./example/act/inference_act_server.bash  # On GPU server
-./example/act/inference_act_client.bash  # On robot machine
+./example/act/inference_server.bash  # On GPU server
+./example/act/inference_client.bash  # On robot machine
 ```
 
 **Training Configuration:**
@@ -505,16 +505,16 @@ The ACT (Action Chunking Transformer) policy is fully implemented with training,
 
 ```bash
 # Custom training configuration
-REPO_ID=myuser/act-so101-pick_cube STEPS=20000 ./example/act/train_act.bash
+REPO_ID=myuser/act-so101-pick_cube STEPS=20000 ./example/act/train.bash
 
 # Using --task to override task name (updates REPO_ID automatically)
-./example/act/train_act.bash --task pick_cube
+./example/act/train.bash --task pick_cube
 
 # Resume training from checkpoint
-RESUME=/path/to/checkpoint.pt ./example/act/train_act.bash
+RESUME=/path/to/checkpoint.pt ./example/act/train.bash
 
 # Preview configuration
-./example/act/train_act.bash --dry-run
+./example/act/train.bash --dry-run
 ```
 
 **Inference Configuration:**
@@ -533,16 +533,16 @@ For running inference on a remote GPU while the robot is on a different machine:
 
 ```bash
 # On GPU server
-CHECKPOINT=myuser/act-so101-task PORT=8000 ./example/act/inference_act_server.bash
+CHECKPOINT=myuser/act-so101-task PORT=8000 ./example/act/inference_server.bash
 
 # On GPU server using --task to override
-./example/act/inference_act_server.bash --task pick_cube
+./example/act/inference_server.bash --task pick_cube
 
 # On robot machine
-SERVER_HOST=192.168.1.100 ./example/act/inference_act_client.bash
+SERVER_HOST=192.168.1.100 ./example/act/inference_client.bash
 
 # Test connection before starting
-./example/act/inference_act_client.bash --test-connection
+./example/act/inference_client.bash --test-connection
 ```
 
 **Naming Convention:**
@@ -563,14 +563,14 @@ The Diffusion policy provides an alternative approach using diffusion models for
 
 ```bash
 # Training
-./example/diffusion/train_diffusion.bash
+./example/diffusion/train.bash
 
 # Local inference
-./example/diffusion/inference_diffusion.bash
+./example/diffusion/inference.bash
 
 # Client-server inference (remote GPU)
-./example/diffusion/inference_diffusion_server.bash  # On GPU server
-./example/diffusion/inference_diffusion_client.bash  # On robot machine
+./example/diffusion/inference_server.bash  # On GPU server
+./example/diffusion/inference_client.bash  # On robot machine
 ```
 
 **Training Configuration:**
@@ -592,16 +592,16 @@ The Diffusion policy provides an alternative approach using diffusion models for
 
 ```bash
 # Custom training configuration
-REPO_ID=myuser/diffusion-so101-pick_cube STEPS=50000 ./example/diffusion/train_diffusion.bash
+REPO_ID=myuser/diffusion-so101-pick_cube STEPS=50000 ./example/diffusion/train.bash
 
 # Using --task to override task name (updates REPO_ID automatically)
-./example/diffusion/train_diffusion.bash --task pick_cube
+./example/diffusion/train.bash --task pick_cube
 
 # Train from local dataset
-LOCAL_DIR=./data/my_dataset ./example/diffusion/train_diffusion.bash
+LOCAL_DIR=./data/my_dataset ./example/diffusion/train.bash
 
 # Custom diffusion hyperparameters
-HORIZON=32 N_ACTION_STEPS=16 ./example/diffusion/train_diffusion.bash
+HORIZON=32 N_ACTION_STEPS=16 ./example/diffusion/train.bash
 ```
 
 **Inference Configuration:**
@@ -619,16 +619,16 @@ HORIZON=32 N_ACTION_STEPS=16 ./example/diffusion/train_diffusion.bash
 
 ```bash
 # On GPU server
-CHECKPOINT=myuser/diffusion-so101-task PORT=8000 ./example/diffusion/inference_diffusion_server.bash
+CHECKPOINT=myuser/diffusion-so101-task PORT=8000 ./example/diffusion/inference_server.bash
 
 # On GPU server using --task to override
-./example/diffusion/inference_diffusion_server.bash --task pick_cube
+./example/diffusion/inference_server.bash --task pick_cube
 
 # On robot machine
-SERVER_HOST=192.168.1.100 ./example/diffusion/inference_diffusion_client.bash
+SERVER_HOST=192.168.1.100 ./example/diffusion/inference_client.bash
 
 # Test connection before starting
-./example/diffusion/inference_diffusion_client.bash --test-connection
+./example/diffusion/inference_client.bash --test-connection
 ```
 
 ### Script Features Summary

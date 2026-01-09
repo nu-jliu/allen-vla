@@ -75,6 +75,7 @@ class InferenceClient:
         self.server_port = server_port
         self.robot = None
         self.server_conn: socket.socket | None = None
+        self.initial_position: dict[str, float] | None = None
 
         # Observation feature names (for SO101)
         self.state_names = [
@@ -129,6 +130,11 @@ class InferenceClient:
         self.robot = make_robot_from_config(robot_config)
         self.robot.connect()
 
+        # Record robot's initial joint positions right after connection
+        raw_obs = self.robot.get_observation()
+        self.initial_position = {name: raw_obs[name] for name in self.state_names}
+        logger.info(f"Recorded robot initial position: {self.initial_position}")
+
         logger.info(f"Robot connected on {robot_port}")
         logger.info(f"Robot ID: {robot_id}")
         logger.info(f"Camera: {camera_name} @ index {camera_index}")
@@ -155,6 +161,20 @@ class InferenceClient:
         """Disconnect from robot and server."""
         if self.robot is not None:
             try:
+                # Move robot to initial position before disconnecting
+                if self.initial_position is not None:
+                    logger.info("Moving robot to initial position before disconnect...")
+                    self.robot.send_action(self.initial_position)
+                    # Wait for robot to reach initial position
+                    while True:
+                        raw_obs = self.robot.get_observation()
+                        max_diff = max(
+                            abs(raw_obs[name] - self.initial_position[name])
+                            for name in self.initial_position.keys()
+                        )
+                        if max_diff < 1.0:  # Within 1 degree tolerance
+                            break
+                        time.sleep(0.05)
                 self.robot.disconnect()
             except Exception as e:
                 logger.warning(f"Error disconnecting robot: {e}")
