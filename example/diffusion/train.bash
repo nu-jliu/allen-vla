@@ -21,12 +21,13 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 REPO_ID="${REPO_ID:-jliu6718/diffusion-so101-place_brick}"
 LOCAL_DIR="${LOCAL_DIR:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_ROOT}/model}"
-BATCH_SIZE="${BATCH_SIZE:-8}"
+BATCH_SIZE="${BATCH_SIZE:-32}"
 STEPS="${STEPS:-100000}"
 SEED="${SEED:-42}"
 PUSH_TO_HUB="${PUSH_TO_HUB:-true}"
 RESUME="${RESUME:-}"
 DEVICE="${DEVICE:-cuda}"
+FORCE_REDOWNLOAD="${FORCE_REDOWNLOAD:-true}"
 
 # Diffusion-specific hyperparameters
 HORIZON="${HORIZON:-16}"
@@ -73,6 +74,7 @@ print_usage() {
     echo "  SEED                Random seed for reproducibility (default: 42)"
     echo "  DEVICE              Compute device: cuda, cpu, mps (default: cuda)"
     echo "  RESUME              Path to checkpoint to resume from (default: none)"
+    echo "  FORCE_REDOWNLOAD    Force re-download dataset from Hub (default: true)"
     echo ""
     echo -e "${BLUE}Environment Variables - Diffusion Hyperparameters:${NC}"
     echo "  HORIZON             Prediction horizon (default: 16)"
@@ -110,6 +112,7 @@ print_config() {
         echo -e "  ${YELLOW}Local Dir:${NC}       ${LOCAL_DIR}"
     else
         echo -e "  ${YELLOW}Repo ID:${NC}         ${REPO_ID}"
+        echo -e "  ${YELLOW}Force Redownload:${NC} ${FORCE_REDOWNLOAD}"
     fi
     echo ""
     echo -e "${BLUE}Training Configuration:${NC}"
@@ -331,6 +334,11 @@ main() {
         RESUME_FLAG="--resume ${RESUME}"
     fi
 
+    FORCE_REDOWNLOAD_FLAG=""
+    if [[ "${FORCE_REDOWNLOAD}" == "true" ]]; then
+        FORCE_REDOWNLOAD_FLAG="--force-redownload"
+    fi
+
     echo -e "${GREEN}Starting training...${NC}"
     echo -e "${CYAN}Training ${STEPS} steps with batch size ${BATCH_SIZE}${NC}"
     echo -e "${CYAN}Model will be saved to: ${OUTPUT_DIR}${NC}"
@@ -355,6 +363,7 @@ main() {
         --seed "${SEED}" \
         ${PUSH_FLAG} \
         ${RESUME_FLAG} \
+        ${FORCE_REDOWNLOAD_FLAG} \
         "${EXTRA_ARGS[@]}"
 }
 

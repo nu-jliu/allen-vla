@@ -29,8 +29,8 @@ def add_common_robot_args(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument(
         "--leader-port",
         type=str,
-        default="/dev/ttyACM0",
-        help="Serial port for the leader arm (default: /dev/ttyACM0)",
+        default="/dev/ttyACM1",
+        help="Serial port for the leader arm (default: /dev/ttyACM1)",
     )
     parser.add_argument(
         "--leader-id",
@@ -41,8 +41,8 @@ def add_common_robot_args(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument(
         "--follower-port",
         type=str,
-        default="/dev/ttyACM1",
-        help="Serial port for the follower arm (default: /dev/ttyACM1)",
+        default="/dev/ttyACM0",
+        help="Serial port for the follower arm (default: /dev/ttyACM0)",
     )
     parser.add_argument(
         "--follower-id",

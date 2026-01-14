@@ -27,6 +27,7 @@ PUSH_TO_HUB="${PUSH_TO_HUB:-true}"
 RESUME="${RESUME:-}"
 DEVICE="${DEVICE:-cuda}"
 TASK="${TASK:-}"
+FORCE_REDOWNLOAD="${FORCE_REDOWNLOAD:-true}"
 
 # Print banner
 print_banner() {
@@ -58,6 +59,7 @@ print_usage() {
     echo "  PUSH_TO_HUB         Push trained model to HuggingFace Hub (default: true)"
     echo "  RESUME              Path to checkpoint to resume from (default: none)"
     echo "  DEVICE              Compute device: cuda, cpu, mps (default: cuda)"
+    echo "  FORCE_REDOWNLOAD    Force re-download dataset from Hub (default: true)"
     echo ""
     echo -e "${BLUE}Example:${NC}"
     echo "  REPO_ID=myuser/act-so101-pick_cube STEPS=20000 $0"
@@ -75,6 +77,7 @@ print_config() {
     echo -e "${BLUE}Dataset/Model:${NC}"
     echo -e "  ${YELLOW}Repo ID:${NC}         ${REPO_ID}"
     echo -e "  ${YELLOW}Push to Hub:${NC}     ${PUSH_TO_HUB}"
+    echo -e "  ${YELLOW}Force Redownload:${NC} ${FORCE_REDOWNLOAD}"
     echo ""
     echo -e "${BLUE}Training Configuration:${NC}"
     echo -e "  ${YELLOW}Batch Size:${NC}      ${BATCH_SIZE}"
@@ -262,6 +265,11 @@ main() {
         RESUME_FLAG="--resume ${RESUME}"
     fi
 
+    FORCE_REDOWNLOAD_FLAG=""
+    if [[ "${FORCE_REDOWNLOAD}" == "true" ]]; then
+        FORCE_REDOWNLOAD_FLAG="--force-redownload"
+    fi
+
     echo -e "${GREEN}Starting training...${NC}"
     echo -e "${CYAN}Training ${STEPS} steps with batch size ${BATCH_SIZE}${NC}"
     echo -e "${CYAN}Model will be saved to: ${OUTPUT_DIR}${NC}"
@@ -279,7 +287,8 @@ main() {
         --steps "${STEPS}" \
         --seed "${SEED}" \
         ${PUSH_FLAG} \
-        ${RESUME_FLAG}
+        ${RESUME_FLAG} \
+        ${FORCE_REDOWNLOAD_FLAG}
 }
 
 main "$@"

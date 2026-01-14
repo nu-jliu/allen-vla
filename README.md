@@ -378,9 +378,9 @@ uv run python teleop/teleop.py
 
 The script accepts the following command-line arguments:
 
-- `--leader-port`: Serial port for the leader arm (default: `/dev/ttyACM0`)
+- `--leader-port`: Serial port for the leader arm (default: `/dev/ttyACM1`)
 - `--leader-id`: ID for the leader arm (default: `my_leader`)
-- `--follower-port`: Serial port for the follower arm (default: `/dev/ttyACM1`)
+- `--follower-port`: Serial port for the follower arm (default: `/dev/ttyACM0`)
 - `--follower-id`: ID for the follower arm (default: `my_follower`)
 - `--frequency`: Control frequency in Hz (default: `20.0`)
 

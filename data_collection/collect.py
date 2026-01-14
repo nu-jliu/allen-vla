@@ -295,19 +295,19 @@ def main() -> None:
                                             logger.info("=== RECORDING STARTED ===")
                                             send_response(
                                                 client_socket,
-                                                "[START] Recording started - Press s to stop",
+                                                "\033[32m[START]\033[0m Recording started - Press s to stop",
                                             )
                                         else:
                                             recording = False
                                             if frame_count > 0:
                                                 dataset.save_episode()
                                                 episode_count += 1
-                                                msg = f"[SAVED] Episode {episode_count} saved with {frame_count} frames"
+                                                msg = f"\033[32m[SAVED]\033[0m Episode {episode_count} saved with {frame_count} frames"
                                                 logger.info(
                                                     f"=== RECORDING STOPPED === (Saved {frame_count} frames, Episode {episode_count})"
                                                 )
                                             else:
-                                                msg = "[STOP] Recording stopped (No frames captured)"
+                                                msg = "\033[32m[STOP]\033[0m Recording stopped (No frames captured)"
                                                 logger.info(
                                                     "=== RECORDING STOPPED === (No frames captured)"
                                                 )
@@ -325,17 +325,17 @@ def main() -> None:
                                                 dataset.create_episode_buffer()
                                             )
                                             frame_count = 0
-                                            logger.info(
+                                            logger.warning(
                                                 f"=== EPISODE ABORTED === (Discarded {discarded} frames)"
                                             )
                                             send_response(
                                                 client_socket,
-                                                f"[ABORT] Episode aborted - Discarded {discarded} frames",
+                                                f"\033[33m[ABORT]\033[0m Episode aborted - Discarded {discarded} frames",
                                             )
                                         else:
                                             send_response(
                                                 client_socket,
-                                                "[INFO] Not recording - nothing to abort",
+                                                "\033[36m[INFO]\033[0m Not recording - nothing to abort",
                                             )
 
                                 # Handle 'q' - quit
@@ -358,7 +358,7 @@ def main() -> None:
                                     )
                                     send_response(
                                         client_socket,
-                                        f"[ERROR] Unknown command: '{char}' - Use s, a, or q",
+                                        f"\033[31m[ERROR]\033[0m Unknown command: '{char}' - Use s, a, or q",
                                     )
 
                         except socket.timeout:

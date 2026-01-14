@@ -100,8 +100,8 @@ ls -l /dev/so101_*
 
 Expected output:
 ```
-lrwxrwxrwx 1 root root 7 Dec 18 10:00 /dev/so101_follower -> ttyACM1
-lrwxrwxrwx 1 root root 7 Dec 18 10:00 /dev/so101_leader -> ttyACM0
+lrwxrwxrwx 1 root root 7 Dec 18 10:00 /dev/so101_follower -> ttyACM0
+lrwxrwxrwx 1 root root 7 Dec 18 10:00 /dev/so101_leader -> ttyACM1
 ```
 
 ## Usage
@@ -110,7 +110,7 @@ lrwxrwxrwx 1 root root 7 Dec 18 10:00 /dev/so101_leader -> ttyACM0
 
 ```bash
 # Use default ports or specify which ttyACM device is which
-python teleop/main.py --leader-port /dev/ttyACM0 --follower-port /dev/ttyACM1
+python teleop/main.py --leader-port /dev/ttyACM1 --follower-port /dev/ttyACM0
 ```
 
 ### With Symbolic Links (Method 1 or 2)

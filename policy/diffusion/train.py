@@ -37,6 +37,7 @@ import logging
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
 
 from tqdm import tqdm
+from huggingface_hub import scan_cache_dir
 from lerobot.configs.default import DatasetConfig, WandBConfig
 from lerobot.configs.train import TrainPipelineConfig
 from lerobot.policies.diffusion.configuration_diffusion import DiffusionConfig
@@ -46,6 +47,58 @@ from utils import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def clear_hub_cache_for_repo(repo_id: str) -> None:
+    """Clear the HuggingFace Hub cache for a specific dataset repository.
+
+    :param repo_id: The repository ID (e.g., 'username/dataset-name')
+    :type repo_id: str
+    """
+    try:
+        cache_info = scan_cache_dir()
+        for repo in cache_info.repos:
+            if repo.repo_id == repo_id:
+                logger.info(f"Clearing Hub cache for dataset: {repo_id}")
+                logger.info(f"  Cache size: {repo.size_on_disk / 1024 / 1024:.2f} MB")
+                for revision in repo.revisions:
+                    cache_info.delete_revisions(revision.commit_hash).execute()
+                logger.info(f"  Hub cache cleared successfully")
+                return
+        logger.info(f"No Hub cached data found for dataset: {repo_id}")
+    except Exception as e:
+        logger.warning(f"Failed to clear Hub cache for {repo_id}: {e}")
+        logger.warning("Continuing with training anyway...")
+
+
+def clear_local_dataset_cache(repo_id: str) -> None:
+    """Clear the local LeRobot dataset cache for a specific dataset repository.
+
+    LeRobot stores processed datasets locally in ~/.cache/huggingface/lerobot/.
+    This function removes the local cache for the specified dataset.
+
+    :param repo_id: The repository ID (e.g., 'username/dataset-name')
+    :type repo_id: str
+    """
+    import shutil
+
+    # LeRobot stores datasets in ~/.cache/huggingface/lerobot/{repo_id}
+    lerobot_cache_dir = Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
+
+    try:
+        if lerobot_cache_dir.exists():
+            # Calculate size before deletion
+            total_size = sum(f.stat().st_size for f in lerobot_cache_dir.rglob("*") if f.is_file())
+            logger.info(f"Clearing local LeRobot cache for dataset: {repo_id}")
+            logger.info(f"  Cache path: {lerobot_cache_dir}")
+            logger.info(f"  Cache size: {total_size / 1024 / 1024:.2f} MB")
+            shutil.rmtree(lerobot_cache_dir)
+            logger.info(f"  Local cache cleared successfully")
+        else:
+            logger.info(f"No local LeRobot cache found for dataset: {repo_id}")
+    except Exception as e:
+        logger.warning(f"Failed to clear local cache for {repo_id}: {e}")
+        logger.warning("Continuing with training anyway...")
 
 
 def parse_args() -> Namespace:
@@ -242,6 +295,11 @@ def parse_args() -> Namespace:
         "--push",
         action="store_true",
         help="Push checkpoints to HuggingFace Hub",
+    )
+    advanced.add_argument(
+        "--force-redownload",
+        action="store_true",
+        help="Force re-download dataset from HuggingFace Hub (ignores cache)",
     )
 
     return parser.parse_args()
@@ -513,6 +571,7 @@ def main() -> None:
     steps = args.steps
     batch_size = args.batch_size
     progress_bar = args.progress_bar
+    force_redownload = args.force_redownload
 
     logger.info("")
     logger.info("Starting training with configuration:")
@@ -523,7 +582,15 @@ def main() -> None:
     logger.info(f"  Output: {output_dir}")
     logger.info(f"  Steps: {steps:,}")
     logger.info(f"  Batch size: {batch_size}")
+    logger.info(f"  Force redownload: {force_redownload}")
     logger.info("")
+
+    # Force redownload if requested (only applies to Hub datasets)
+    if force_redownload and repo_id is not None:
+        logger.info("Force redownload enabled - clearing all cached dataset...")
+        clear_hub_cache_for_repo(repo_id)
+        clear_local_dataset_cache(repo_id)
+        logger.info("")
 
     try:
         # Build configuration
