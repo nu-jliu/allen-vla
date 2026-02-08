@@ -175,7 +175,7 @@ uv sync
 
 This will create a virtual environment and install all dependencies specified in `pyproject.toml`:
 - huggingface-hub (>=0.35.3)
-- lerobot[feetech] (>=0.4.2)
+- lerobot[feetech,pusht] (>=0.4.2)
 - opencv-python (>=4.12.0.88)
 - pynput (>=1.8.1)
 - uuid (>=1.30)
@@ -291,16 +291,20 @@ For detailed hardware setup instructions including creating symbolic links for c
 To deploy this project to a remote device (e.g., Jetson):
 
 ```bash
-./scripts/deploy_remote.bash <username> <hostname>
+./scripts/deploy_remote.bash <ssh_target>
 ```
 
-**Example:**
+**Examples:**
 
 ```bash
-./scripts/deploy_remote.bash allen jetson
+# Using user@host format
+./scripts/deploy_remote.bash allen@jetson
+
+# Using just hostname (uses SSH config or current user)
+./scripts/deploy_remote.bash jetson
 ```
 
-This script uses rsync to sync all project files (excluding virtual environments, cache files, data, and models) to the remote machine at `/home/<username>/.ws/vla_ws/`.
+This script uses rsync to sync all project files (excluding virtual environments, cache files, data, and models) to the remote machine at `~/vla_ws/`.
 
 ### Download Data from Remote
 
@@ -426,18 +430,18 @@ All example scripts support:
 - `-h, --help` - Show detailed usage information
 - `--dry-run` - Preview configuration without executing
 - `--task TASK` - Specify task name (optional)
-- Environment variable overrides for all parameters
+- Full command-line argument support for all parameters
 
-**Common Environment Variables:**
+**Common Arguments:**
 
-| Variable | Description | Default |
+| Argument | Description | Default |
 |----------|-------------|---------|
-| `LEADER_PORT` | Leader arm serial port | `/dev/ttyACM1` |
-| `FOLLOWER_PORT` | Follower arm serial port | `/dev/ttyACM0` |
-| `USERNAME` | HuggingFace username | `jliu6718` |
-| `TASK` | Task name | `place_brick` |
-| `CAMERA_INDEX` | Camera device index | `0` |
-| `PUSH_TO_HUB` | Push to HuggingFace Hub | `true` |
+| `--leader-port` | Leader arm serial port | `/dev/ttyACM1` |
+| `--follower-port` | Follower arm serial port | `/dev/ttyACM0` |
+| `--username` | HuggingFace username | `jliu6718` |
+| `--task` | Task name | `place_brick` |
+| `--camera-index` | Camera device index | `0` |
+| `--push-to-hub` / `--no-push-to-hub` | Push to HuggingFace Hub | enabled |
 
 **Example with custom configuration:**
 
@@ -445,8 +449,8 @@ All example scripts support:
 # Override task via argument
 ./example/data_collection.bash act --task pick_cube
 
-# Override task and username via environment
-TASK=pick_cube USERNAME=myuser ./example/data_collection.bash diffusion
+# Override multiple options via arguments
+./example/data_collection.bash diffusion --task pick_cube --username myuser
 
 # Preview configuration without running
 ./example/data_collection.bash act --dry-run
@@ -496,26 +500,27 @@ The ACT (Action Chunking Transformer) policy is fully implemented with training,
 
 **Training Configuration:**
 
-| Variable | Description | Default |
+| Argument | Description | Default |
 |----------|-------------|---------|
-| `REPO_ID` | Dataset repo ID on HuggingFace | `jliu6718/act-so101-place_brick` |
-| `OUTPUT_DIR` | Model output directory | `$PROJECT_ROOT/model` |
-| `BATCH_SIZE` | Training batch size | `32` |
-| `STEPS` | Number of training steps | `10000` |
-| `PUSH_TO_HUB` | Push model to HuggingFace | `true` |
-| `RESUME` | Checkpoint path to resume from | (none) |
+| `--repo-id` | Dataset repo ID on HuggingFace | `jliu6718/act-so101-place_brick` |
+| `--output-dir` | Model output directory | `$PROJECT_ROOT/model` |
+| `--batch-size` | Training batch size | `32` |
+| `--steps` | Number of training steps | `10000` |
+| `--push-to-hub` / `--no-push-to-hub` | Push model to HuggingFace | enabled |
+| `--resume` | Checkpoint path to resume from | (none) |
+| `--device` | Training device | `cuda` |
 
 **Training Examples:**
 
 ```bash
 # Custom training configuration
-REPO_ID=myuser/act-so101-pick_cube STEPS=20000 ./example/act/train.bash
+./example/act/train.bash --repo-id myuser/act-so101-pick_cube --steps 20000
 
-# Using --task to override task name (updates REPO_ID automatically)
+# Using --task to override task name (updates repo-id automatically)
 ./example/act/train.bash --task pick_cube
 
 # Resume training from checkpoint
-RESUME=/path/to/checkpoint.pt ./example/act/train.bash
+./example/act/train.bash --resume /path/to/checkpoint.pt
 
 # Preview configuration
 ./example/act/train.bash --dry-run
@@ -523,13 +528,13 @@ RESUME=/path/to/checkpoint.pt ./example/act/train.bash
 
 **Inference Configuration:**
 
-| Variable | Description | Default |
+| Argument | Description | Default |
 |----------|-------------|---------|
-| `CHECKPOINT` | Model checkpoint | `jliu6718/act-so101-place_brick` |
-| `ROBOT_PORT` | Robot serial port | `/dev/ttyACM0` |
-| `CAMERA_INDEX` | Camera device index | `0` |
-| `FPS` | Inference frequency | `30` |
-| `DISPLAY_VIDEO` | Show video feed | `false` |
+| `--checkpoint` | Model checkpoint | `jliu6718/act-so101-place_brick` |
+| `--robot-port` | Robot serial port | `/dev/ttyACM0` |
+| `--camera-index` | Camera device index | `0` |
+| `--fps` | Inference frequency | `30` |
+| `--display-video` | Show video feed | disabled |
 
 **Client-Server Inference:**
 
@@ -537,13 +542,13 @@ For running inference on a remote GPU while the robot is on a different machine:
 
 ```bash
 # On GPU server
-CHECKPOINT=myuser/act-so101-task PORT=8000 ./example/act/inference_server.bash
+./example/act/inference_server.bash --checkpoint myuser/act-so101-task --port 8000
 
 # On GPU server using --task to override
 ./example/act/inference_server.bash --task pick_cube
 
 # On robot machine
-SERVER_HOST=192.168.1.100 ./example/act/inference_client.bash
+./example/act/inference_client.bash --server-host 192.168.1.100
 
 # Test connection before starting
 ./example/act/inference_client.bash --test-connection
@@ -579,57 +584,58 @@ The Diffusion policy provides an alternative approach using diffusion models for
 
 **Training Configuration:**
 
-| Variable | Description | Default |
+| Argument | Description | Default |
 |----------|-------------|---------|
-| `REPO_ID` | Dataset repo ID on HuggingFace | `jliu6718/diffusion-so101-place_brick` |
-| `LOCAL_DIR` | Local dataset directory (overrides REPO_ID) | (none) |
-| `OUTPUT_DIR` | Model output directory | `$PROJECT_ROOT/model` |
-| `BATCH_SIZE` | Training batch size | `8` |
-| `STEPS` | Number of training steps | `100000` |
-| `HORIZON` | Prediction horizon | `16` |
-| `N_ACTION_STEPS` | Number of action steps | `8` |
-| `N_OBS_STEPS` | Number of observation steps | `2` |
-| `LR` | Learning rate | `1e-4` |
-| `SAVE_FREQ` | Checkpoint save frequency | `5000` |
+| `--repo-id` | Dataset repo ID on HuggingFace | `jliu6718/diffusion-so101-place_brick` |
+| `--local-dir` | Local dataset directory (overrides repo-id) | (none) |
+| `--output-dir` | Model output directory | `$PROJECT_ROOT/model` |
+| `--batch-size` | Training batch size | `8` |
+| `--steps` | Number of training steps | `100000` |
+| `--horizon` | Prediction horizon | `16` |
+| `--n-action-steps` | Number of action steps | `8` |
+| `--n-obs-steps` | Number of observation steps | `2` |
+| `--lr` | Learning rate | `1e-4` |
+| `--save-freq` | Checkpoint save frequency | `5000` |
+| `--device` | Training device | `cuda` |
 
 **Training Examples:**
 
 ```bash
 # Custom training configuration
-REPO_ID=myuser/diffusion-so101-pick_cube STEPS=50000 ./example/diffusion/train.bash
+./example/diffusion/train.bash --repo-id myuser/diffusion-so101-pick_cube --steps 50000
 
-# Using --task to override task name (updates REPO_ID automatically)
+# Using --task to override task name (updates repo-id automatically)
 ./example/diffusion/train.bash --task pick_cube
 
 # Train from local dataset
-LOCAL_DIR=./data/my_dataset ./example/diffusion/train.bash
+./example/diffusion/train.bash --local-dir ./data/my_dataset
 
 # Custom diffusion hyperparameters
-HORIZON=32 N_ACTION_STEPS=16 ./example/diffusion/train.bash
+./example/diffusion/train.bash --horizon 32 --n-action-steps 16
 ```
 
 **Inference Configuration:**
 
-| Variable | Description | Default |
+| Argument | Description | Default |
 |----------|-------------|---------|
-| `CHECKPOINT` | Model checkpoint | `jliu6718/diffusion-so101-place_brick` |
-| `ROBOT_PORT` | Robot serial port | `/dev/ttyACM0` |
-| `CAMERA_INDEX` | Camera device index | `0` |
-| `NUM_EPISODES` | Number of episodes to run | `10` |
-| `EPISODE_TIME` | Episode duration (seconds) | `60` |
-| `RESET_TIME` | Reset time between episodes | `60` |
+| `--checkpoint` | Model checkpoint | `jliu6718/diffusion-so101-place_brick` |
+| `--robot-port` | Robot serial port | `/dev/ttyACM0` |
+| `--camera-index` | Camera device index | `0` |
+| `--num-episodes` | Number of episodes to run | `10` |
+| `--episode-time` | Episode duration (seconds) | `60` |
+| `--reset-time` | Reset time between episodes | `60` |
 
 **Client-Server Inference:**
 
 ```bash
 # On GPU server
-CHECKPOINT=myuser/diffusion-so101-task PORT=8000 ./example/diffusion/inference_server.bash
+./example/diffusion/inference_server.bash --checkpoint myuser/diffusion-so101-task --port 8000
 
 # On GPU server using --task to override
 ./example/diffusion/inference_server.bash --task pick_cube
 
 # On robot machine
-SERVER_HOST=192.168.1.100 ./example/diffusion/inference_client.bash
+./example/diffusion/inference_client.bash --server-host 192.168.1.100
 
 # Test connection before starting
 ./example/diffusion/inference_client.bash --test-connection
@@ -641,12 +647,12 @@ All example scripts in `example/`, `example/act/`, and `example/diffusion/` incl
 
 | Feature | Description |
 |---------|-------------|
-| `-h, --help` | Show detailed usage and all environment variables |
+| `-h, --help` | Show detailed usage and all available arguments |
 | `--dry-run` | Preview configuration and dependency checks without running |
-| `--task TASK` | Override task name (updates REPO_ID/CHECKPOINT automatically) |
+| `--task TASK` | Override task name (updates repo-id/checkpoint automatically) |
 | Color output | Color-coded status messages (green=success, yellow=warning, red=error) |
 | Dependency checks | Validates uv, GPU, serial ports, cameras before execution |
-| Environment variables | All parameters configurable via environment variables |
+| CLI arguments | All parameters configurable via command-line arguments |
 
 **Common Checks Performed:**
 

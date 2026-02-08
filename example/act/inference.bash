@@ -17,23 +17,23 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Default configuration (can be overridden by environment variables)
-CHECKPOINT="${CHECKPOINT:-jliu6718/act-so101-place_brick}"
-ROBOT_PORT="${ROBOT_PORT:-/dev/ttyACM0}"
-ROBOT_ID="${ROBOT_ID:-my_follower}"
-CAMERA_INDEX="${CAMERA_INDEX:-0}"
-CAMERA_NAME="${CAMERA_NAME:-front}"
-CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
-CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
-CAMERA_FPS="${CAMERA_FPS:-30}"
-FPS="${FPS:-30}"
-USERNAME="${USERNAME:-jliu6718}"
-POLICY_TYPE="${POLICY_TYPE:-act}"
-ROBOT_TYPE="${ROBOT_TYPE:-so101}"
-TASK="${TASK:-place_brick}"
-DATA_ROOT="${DATA_ROOT:-${PROJECT_ROOT}/data}"
-PUSH_TO_HUB="${PUSH_TO_HUB:-true}"
-DISPLAY_VIDEO="${DISPLAY_VIDEO:-false}"
+# Default configuration
+CHECKPOINT="jliu6718/act-so101-place_brick"
+ROBOT_PORT="/dev/ttyACM0"
+ROBOT_ID="my_follower"
+CAMERA_INDEX="0"
+CAMERA_NAME="front"
+CAMERA_WIDTH="640"
+CAMERA_HEIGHT="480"
+CAMERA_FPS="30"
+FPS="30"
+USERNAME="jliu6718"
+POLICY_TYPE="act"
+ROBOT_TYPE="so101"
+TASK="place_brick"
+DATA_ROOT="${PROJECT_ROOT}/data"
+PUSH_TO_HUB=true
+DISPLAY_VIDEO=false
 
 # Print banner
 print_banner() {
@@ -49,30 +49,29 @@ print_usage() {
     echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
-    echo "  -h, --help          Show this help message"
-    echo "  --dry-run           Show configuration without running"
-    echo "  --task TASK         Task name (overrides TASK env var)"
+    echo "  -h, --help              Show this help message"
+    echo "  --dry-run               Show configuration without running"
+    echo "  --task TASK             Task name (default: place_brick)"
+    echo "  --checkpoint MODEL      Model checkpoint (default: jliu6718/act-so101-place_brick)"
+    echo "  --robot-port PORT       Robot serial port (default: /dev/ttyACM0)"
+    echo "  --robot-id ID           Robot ID (default: my_follower)"
+    echo "  --camera-index INDEX    Camera device index (default: 0)"
+    echo "  --camera-name NAME      Camera name identifier (default: front)"
+    echo "  --camera-width WIDTH    Camera width (default: 640)"
+    echo "  --camera-height HEIGHT  Camera height (default: 480)"
+    echo "  --camera-fps FPS        Camera FPS (default: 30)"
+    echo "  --fps FPS               Inference FPS (default: 30)"
+    echo "  --username USER         HuggingFace username (default: jliu6718)"
+    echo "  --policy-type TYPE      Policy type (default: act)"
+    echo "  --robot-type TYPE       Robot type (default: so101)"
+    echo "  --data-root DIR         Data storage root (default: \$PROJECT_ROOT/data)"
+    echo "  --push-to-hub           Push evaluation to HuggingFace Hub (default)"
+    echo "  --no-push-to-hub        Don't push to HuggingFace Hub"
+    echo "  --display-video         Display video feed"
     echo ""
-    echo -e "${BLUE}Environment Variables:${NC}"
-    echo "  CHECKPOINT          Model checkpoint (default: jliu6718/act-so101-place_brick)"
-    echo "  ROBOT_PORT          Robot serial port (default: /dev/ttyACM0)"
-    echo "  ROBOT_ID            Robot ID (default: my_follower)"
-    echo "  CAMERA_INDEX        Camera device index (default: 0)"
-    echo "  CAMERA_NAME         Camera name identifier (default: front)"
-    echo "  CAMERA_WIDTH        Camera width (default: 640)"
-    echo "  CAMERA_HEIGHT       Camera height (default: 480)"
-    echo "  CAMERA_FPS          Camera FPS (default: 30)"
-    echo "  FPS                 Inference FPS (default: 30)"
-    echo "  USERNAME            HuggingFace username (default: jliu6718)"
-    echo "  POLICY_TYPE         Policy type (default: act)"
-    echo "  ROBOT_TYPE          Robot type (default: so101)"
-    echo "  TASK                Task name (default: place_brick)"
-    echo "  DATA_ROOT           Data storage root (default: \$PROJECT_ROOT/data)"
-    echo "  PUSH_TO_HUB         Push evaluation to HuggingFace Hub (default: true)"
-    echo "  DISPLAY_VIDEO       Display video feed (default: false)"
-    echo ""
-    echo -e "${BLUE}Example:${NC}"
-    echo "  CHECKPOINT=myuser/act-so101-pick_cube TASK=pick_cube $0"
+    echo -e "${BLUE}Examples:${NC}"
+    echo "  $0 --checkpoint myuser/act-so101-pick_cube --task pick_cube"
+    echo "  $0 --display-video --fps 15"
 }
 
 # Print configuration
@@ -179,6 +178,122 @@ main() {
                 fi
                 TASK="$2"
                 shift 2
+                ;;
+            --checkpoint)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --checkpoint requires a value"
+                    exit 1
+                fi
+                CHECKPOINT="$2"
+                shift 2
+                ;;
+            --robot-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --robot-port requires a value"
+                    exit 1
+                fi
+                ROBOT_PORT="$2"
+                shift 2
+                ;;
+            --robot-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --robot-id requires a value"
+                    exit 1
+                fi
+                ROBOT_ID="$2"
+                shift 2
+                ;;
+            --camera-index)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-index requires a value"
+                    exit 1
+                fi
+                CAMERA_INDEX="$2"
+                shift 2
+                ;;
+            --camera-name)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-name requires a value"
+                    exit 1
+                fi
+                CAMERA_NAME="$2"
+                shift 2
+                ;;
+            --camera-width)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-width requires a value"
+                    exit 1
+                fi
+                CAMERA_WIDTH="$2"
+                shift 2
+                ;;
+            --camera-height)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-height requires a value"
+                    exit 1
+                fi
+                CAMERA_HEIGHT="$2"
+                shift 2
+                ;;
+            --camera-fps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-fps requires a value"
+                    exit 1
+                fi
+                CAMERA_FPS="$2"
+                shift 2
+                ;;
+            --fps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --fps requires a value"
+                    exit 1
+                fi
+                FPS="$2"
+                shift 2
+                ;;
+            --username)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --username requires a value"
+                    exit 1
+                fi
+                USERNAME="$2"
+                shift 2
+                ;;
+            --policy-type)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --policy-type requires a value"
+                    exit 1
+                fi
+                POLICY_TYPE="$2"
+                shift 2
+                ;;
+            --robot-type)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --robot-type requires a value"
+                    exit 1
+                fi
+                ROBOT_TYPE="$2"
+                shift 2
+                ;;
+            --data-root)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --data-root requires a value"
+                    exit 1
+                fi
+                DATA_ROOT="$2"
+                shift 2
+                ;;
+            --push-to-hub)
+                PUSH_TO_HUB=true
+                shift
+                ;;
+            --no-push-to-hub)
+                PUSH_TO_HUB=false
+                shift
+                ;;
+            --display-video)
+                DISPLAY_VIDEO=true
+                shift
                 ;;
             *)
                 echo -e "${RED}Error:${NC} Unknown option: $1"

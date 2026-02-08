@@ -17,16 +17,16 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Default configuration (can be overridden by environment variables)
-ROBOT_PORT="${ROBOT_PORT:-/dev/ttyACM0}"
-ROBOT_ID="${ROBOT_ID:-my_follower}"
-CAMERA_INDEX="${CAMERA_INDEX:-0}"
-CAMERA_NAME="${CAMERA_NAME:-front}"
-CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
-CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
-CAMERA_FPS="${CAMERA_FPS:-30}"
-SERVER_HOST="${SERVER_HOST:-192.168.100.146}"
-SERVER_PORT="${SERVER_PORT:-8000}"
+# Default configuration
+ROBOT_PORT="/dev/ttyACM0"
+ROBOT_ID="my_follower"
+CAMERA_INDEX="0"
+CAMERA_NAME="front"
+CAMERA_WIDTH="640"
+CAMERA_HEIGHT="480"
+CAMERA_FPS="30"
+SERVER_HOST="192.168.100.146"
+SERVER_PORT="8000"
 
 # Print banner
 print_banner() {
@@ -43,23 +43,22 @@ print_usage() {
     echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
-    echo "  -h, --help          Show this help message"
-    echo "  --dry-run           Show configuration without running"
-    echo "  --test-connection   Test server connectivity and exit"
+    echo "  -h, --help              Show this help message"
+    echo "  --dry-run               Show configuration without running"
+    echo "  --test-connection       Test server connectivity and exit"
+    echo "  --robot-port PORT       Robot serial port (default: /dev/ttyACM0)"
+    echo "  --robot-id ID           Robot ID (default: my_follower)"
+    echo "  --camera-index INDEX    Camera device index (default: 0)"
+    echo "  --camera-name NAME      Camera name identifier (default: front)"
+    echo "  --camera-width WIDTH    Camera width (default: 640)"
+    echo "  --camera-height HEIGHT  Camera height (default: 480)"
+    echo "  --camera-fps FPS        Camera FPS (default: 30)"
+    echo "  --server-host HOST      Inference server hostname/IP (default: 192.168.100.146)"
+    echo "  --server-port PORT      Inference server port (default: 8000)"
     echo ""
-    echo -e "${BLUE}Environment Variables:${NC}"
-    echo "  ROBOT_PORT          Robot serial port (default: /dev/ttyACM0)"
-    echo "  ROBOT_ID            Robot ID (default: my_follower)"
-    echo "  CAMERA_INDEX        Camera device index (default: 0)"
-    echo "  CAMERA_NAME         Camera name identifier (default: front)"
-    echo "  CAMERA_WIDTH        Camera width (default: 640)"
-    echo "  CAMERA_HEIGHT       Camera height (default: 480)"
-    echo "  CAMERA_FPS          Camera FPS (default: 30)"
-    echo "  SERVER_HOST         Inference server hostname/IP (default: 192.168.100.146)"
-    echo "  SERVER_PORT         Inference server port (default: 8000)"
-    echo ""
-    echo -e "${BLUE}Example:${NC}"
-    echo "  SERVER_HOST=10.0.0.5 SERVER_PORT=8080 $0"
+    echo -e "${BLUE}Examples:${NC}"
+    echo "  $0 --server-host 10.0.0.5 --server-port 8080"
+    echo "  $0 --robot-port /dev/ttyUSB0 --camera-index 2"
     echo ""
     echo -e "${BLUE}Note:${NC}"
     echo "  Make sure the inference server is running on the remote machine."
@@ -135,7 +134,7 @@ test_server_connection() {
             echo -e "  ${RED}✗${NC} Cannot connect to ${SERVER_HOST}:${SERVER_PORT}"
             echo -e "    Please verify:"
             echo -e "      1. Server is running (./inference_act_server.bash)"
-            echo -e "      2. Correct SERVER_HOST and SERVER_PORT"
+            echo -e "      2. Correct --server-host and --server-port"
             echo -e "      3. Network connectivity and firewall rules"
             return 1
         fi
@@ -165,6 +164,78 @@ main() {
             --test-connection)
                 TEST_CONNECTION=true
                 shift
+                ;;
+            --robot-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --robot-port requires a value"
+                    exit 1
+                fi
+                ROBOT_PORT="$2"
+                shift 2
+                ;;
+            --robot-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --robot-id requires a value"
+                    exit 1
+                fi
+                ROBOT_ID="$2"
+                shift 2
+                ;;
+            --camera-index)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-index requires a value"
+                    exit 1
+                fi
+                CAMERA_INDEX="$2"
+                shift 2
+                ;;
+            --camera-name)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-name requires a value"
+                    exit 1
+                fi
+                CAMERA_NAME="$2"
+                shift 2
+                ;;
+            --camera-width)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-width requires a value"
+                    exit 1
+                fi
+                CAMERA_WIDTH="$2"
+                shift 2
+                ;;
+            --camera-height)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-height requires a value"
+                    exit 1
+                fi
+                CAMERA_HEIGHT="$2"
+                shift 2
+                ;;
+            --camera-fps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-fps requires a value"
+                    exit 1
+                fi
+                CAMERA_FPS="$2"
+                shift 2
+                ;;
+            --server-host)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --server-host requires a value"
+                    exit 1
+                fi
+                SERVER_HOST="$2"
+                shift 2
+                ;;
+            --server-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --server-port requires a value"
+                    exit 1
+                fi
+                SERVER_PORT="$2"
+                shift 2
                 ;;
             *)
                 echo -e "${RED}Error:${NC} Unknown option: $1"

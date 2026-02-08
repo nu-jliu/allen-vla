@@ -1,23 +1,32 @@
 #!/bin/bash
 
 # Deploy script to sync files to remote Jetson machine
-# Usage: ./scripts/deploy_remote.bash <username> <hostname>
-# Example: ./scripts/deploy_remote.bash allen jetson
+# Usage: ./scripts/deploy_remote.bash <ssh_target>
+# Example: ./scripts/deploy_remote.bash allen@jetson
+# Example: ./scripts/deploy_remote.bash jetson  # if configured in SSH config
 
 set -e  # Exit on error
 
-# Check if both arguments are provided
-if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "Error: Username and hostname required"
-    echo "Usage: $0 <username> <hostname>"
-    echo "Example: $0 allen jetson"
+# Check if argument is provided
+if [ -z "$1" ]; then
+    echo "Error: SSH target required"
+    echo "Usage: $0 <ssh_target>"
+    echo "Example: $0 allen@jetson"
+    echo "Example: $0 jetson  # if configured in SSH config"
     exit 1
 fi
 
-USERNAME="$1"
-HOSTNAME="$2"
-SSH_TARGET="${USERNAME}@${HOSTNAME}"
-REMOTE_DIR="/home/${USERNAME}/.ws/vla_ws/"
+SSH_TARGET="$1"
+
+# Parse SSH target to determine remote directory
+if [[ "$SSH_TARGET" == *"@"* ]]; then
+    # Extract username from user@host format
+    USERNAME="${SSH_TARGET%%@*}"
+    REMOTE_DIR="/home/${USERNAME}/vla_ws/"
+else
+    # No username specified, use ~ which expands on remote
+    REMOTE_DIR="~/vla_ws/"
+fi
 
 echo "================================================"
 echo "Deploying to: ${SSH_TARGET}:${REMOTE_DIR}"

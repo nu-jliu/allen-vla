@@ -17,31 +17,31 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Default configuration (can be overridden by environment variables)
-REPO_ID="${REPO_ID:-jliu6718/diffusion-so101-place_brick}"
-LOCAL_DIR="${LOCAL_DIR:-}"
-OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_ROOT}/model}"
-BATCH_SIZE="${BATCH_SIZE:-32}"
-STEPS="${STEPS:-100000}"
-SEED="${SEED:-42}"
-PUSH_TO_HUB="${PUSH_TO_HUB:-true}"
-RESUME="${RESUME:-}"
-DEVICE="${DEVICE:-cuda}"
-FORCE_REDOWNLOAD="${FORCE_REDOWNLOAD:-true}"
+# Default configuration
+REPO_ID="jliu6718/diffusion-so101-place_brick"
+LOCAL_DIR=""
+OUTPUT_DIR="${PROJECT_ROOT}/model"
+BATCH_SIZE="32"
+STEPS="100000"
+SEED="42"
+PUSH_TO_HUB=true
+RESUME=""
+DEVICE="cuda"
+FORCE_REDOWNLOAD=true
 
 # Diffusion-specific hyperparameters
-HORIZON="${HORIZON:-16}"
-N_ACTION_STEPS="${N_ACTION_STEPS:-8}"
-N_OBS_STEPS="${N_OBS_STEPS:-2}"
-LR="${LR:-1e-4}"
-SAVE_FREQ="${SAVE_FREQ:-5000}"
-LOG_FREQ="${LOG_FREQ:-250}"
+HORIZON="16"
+N_ACTION_STEPS="8"
+N_OBS_STEPS="2"
+LR="1e-4"
+SAVE_FREQ="5000"
+LOG_FREQ="250"
 
 # For push to hub
-USERNAME="${USERNAME:-jliu6718}"
-POLICY_TYPE="${POLICY_TYPE:-diffusion}"
-ROBOT_TYPE="${ROBOT_TYPE:-so101}"
-TASK="${TASK:-place_brick}"
+USERNAME="jliu6718"
+POLICY_TYPE="diffusion"
+ROBOT_TYPE="so101"
+TASK="place_brick"
 
 # Print banner
 print_banner() {
@@ -57,48 +57,48 @@ print_usage() {
     echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
-    echo "  -h, --help          Show this help message"
-    echo "  --dry-run           Show configuration without running"
-    echo "  --task TASK         Task name (overrides TASK env var)"
+    echo "  -h, --help                Show this help message"
+    echo "  --dry-run                 Show configuration without running"
+    echo "  --task TASK               Task name (updates repo ID suffix)"
     echo ""
-    echo -e "${BLUE}Environment Variables - Dataset:${NC}"
-    echo "  REPO_ID             Dataset repo ID on HuggingFace Hub"
-    echo "                      Format: {username}/{policy}-{robot}-{task}"
-    echo "                      (default: jliu6718/diffusion-so101-place_brick)"
-    echo "  LOCAL_DIR           Local dataset directory (overrides REPO_ID if set)"
+    echo -e "${BLUE}Dataset Options:${NC}"
+    echo "  --repo-id ID              Dataset repo ID (default: jliu6718/diffusion-so101-place_brick)"
+    echo "  --local-dir DIR           Local dataset directory (overrides --repo-id)"
+    echo "  --force-redownload        Force re-download dataset (default)"
+    echo "  --no-force-redownload     Don't force re-download dataset"
     echo ""
-    echo -e "${BLUE}Environment Variables - Training:${NC}"
-    echo "  OUTPUT_DIR          Output directory for checkpoints (default: \$PROJECT_ROOT/model)"
-    echo "  BATCH_SIZE          Training batch size (default: 8)"
-    echo "  STEPS               Number of training steps (default: 100000)"
-    echo "  SEED                Random seed for reproducibility (default: 42)"
-    echo "  DEVICE              Compute device: cuda, cpu, mps (default: cuda)"
-    echo "  RESUME              Path to checkpoint to resume from (default: none)"
-    echo "  FORCE_REDOWNLOAD    Force re-download dataset from Hub (default: true)"
+    echo -e "${BLUE}Training Options:${NC}"
+    echo "  --output-dir DIR          Output directory for checkpoints (default: \$PROJECT_ROOT/model)"
+    echo "  --batch-size N            Training batch size (default: 32)"
+    echo "  --steps N                 Number of training steps (default: 100000)"
+    echo "  --seed N                  Random seed (default: 42)"
+    echo "  --device DEVICE           Compute device: cuda, cpu, mps (default: cuda)"
+    echo "  --resume PATH             Resume from checkpoint"
     echo ""
-    echo -e "${BLUE}Environment Variables - Diffusion Hyperparameters:${NC}"
-    echo "  HORIZON             Prediction horizon (default: 16)"
-    echo "  N_ACTION_STEPS      Number of action steps (default: 8)"
-    echo "  N_OBS_STEPS         Number of observation steps (default: 2)"
-    echo "  LR                  Learning rate (default: 1e-4)"
-    echo "  SAVE_FREQ           Checkpoint save frequency (default: 5000)"
-    echo "  LOG_FREQ            Logging frequency (default: 250)"
+    echo -e "${BLUE}Diffusion Hyperparameters:${NC}"
+    echo "  --horizon N               Prediction horizon (default: 16)"
+    echo "  --n-action-steps N        Number of action steps (default: 8)"
+    echo "  --n-obs-steps N           Number of observation steps (default: 2)"
+    echo "  --lr RATE                 Learning rate (default: 1e-4)"
+    echo "  --save-freq N             Checkpoint save frequency (default: 5000)"
+    echo "  --log-freq N              Logging frequency (default: 250)"
     echo ""
-    echo -e "${BLUE}Environment Variables - HuggingFace Hub:${NC}"
-    echo "  PUSH_TO_HUB         Push trained model to HuggingFace Hub (default: true)"
-    echo "  USERNAME            HuggingFace username (default: jliu6718)"
-    echo "  POLICY_TYPE         Policy type (default: diffusion)"
-    echo "  ROBOT_TYPE          Robot type (default: so101)"
-    echo "  TASK                Task name (default: place_brick)"
+    echo -e "${BLUE}HuggingFace Hub Options:${NC}"
+    echo "  --push-to-hub             Push model to HuggingFace Hub (default)"
+    echo "  --no-push-to-hub          Don't push to HuggingFace Hub"
+    echo "  --username USER           HuggingFace username (default: jliu6718)"
+    echo "  --policy-type TYPE        Policy type (default: diffusion)"
+    echo "  --robot-type TYPE         Robot type (default: so101)"
     echo ""
-    echo -e "${BLUE}Example:${NC}"
-    echo "  REPO_ID=myuser/diffusion-so101-pick_cube STEPS=50000 $0"
+    echo -e "${BLUE}Examples:${NC}"
+    echo "  $0 --repo-id myuser/diffusion-so101-pick_cube --steps 50000"
+    echo "  $0 --task pick_cube"
     echo ""
     echo -e "${BLUE}Resume Training:${NC}"
-    echo "  RESUME=/path/to/checkpoint $0"
+    echo "  $0 --resume /path/to/checkpoint"
     echo ""
     echo -e "${BLUE}Train from Local Dataset:${NC}"
-    echo "  LOCAL_DIR=./data/my_dataset $0"
+    echo "  $0 --local-dir ./data/my_dataset"
 }
 
 # Print configuration
@@ -291,6 +291,158 @@ main() {
                     exit 1
                 fi
                 TASK="$2"
+                shift 2
+                ;;
+            --repo-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --repo-id requires a value"
+                    exit 1
+                fi
+                REPO_ID="$2"
+                shift 2
+                ;;
+            --local-dir)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --local-dir requires a value"
+                    exit 1
+                fi
+                LOCAL_DIR="$2"
+                shift 2
+                ;;
+            --output-dir)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --output-dir requires a value"
+                    exit 1
+                fi
+                OUTPUT_DIR="$2"
+                shift 2
+                ;;
+            --batch-size)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --batch-size requires a value"
+                    exit 1
+                fi
+                BATCH_SIZE="$2"
+                shift 2
+                ;;
+            --steps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --steps requires a value"
+                    exit 1
+                fi
+                STEPS="$2"
+                shift 2
+                ;;
+            --seed)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --seed requires a value"
+                    exit 1
+                fi
+                SEED="$2"
+                shift 2
+                ;;
+            --push-to-hub)
+                PUSH_TO_HUB=true
+                shift
+                ;;
+            --no-push-to-hub)
+                PUSH_TO_HUB=false
+                shift
+                ;;
+            --resume)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --resume requires a value"
+                    exit 1
+                fi
+                RESUME="$2"
+                shift 2
+                ;;
+            --device)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --device requires a value"
+                    exit 1
+                fi
+                DEVICE="$2"
+                shift 2
+                ;;
+            --force-redownload)
+                FORCE_REDOWNLOAD=true
+                shift
+                ;;
+            --no-force-redownload)
+                FORCE_REDOWNLOAD=false
+                shift
+                ;;
+            --horizon)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --horizon requires a value"
+                    exit 1
+                fi
+                HORIZON="$2"
+                shift 2
+                ;;
+            --n-action-steps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --n-action-steps requires a value"
+                    exit 1
+                fi
+                N_ACTION_STEPS="$2"
+                shift 2
+                ;;
+            --n-obs-steps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --n-obs-steps requires a value"
+                    exit 1
+                fi
+                N_OBS_STEPS="$2"
+                shift 2
+                ;;
+            --lr)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --lr requires a value"
+                    exit 1
+                fi
+                LR="$2"
+                shift 2
+                ;;
+            --save-freq)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --save-freq requires a value"
+                    exit 1
+                fi
+                SAVE_FREQ="$2"
+                shift 2
+                ;;
+            --log-freq)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --log-freq requires a value"
+                    exit 1
+                fi
+                LOG_FREQ="$2"
+                shift 2
+                ;;
+            --username)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --username requires a value"
+                    exit 1
+                fi
+                USERNAME="$2"
+                shift 2
+                ;;
+            --policy-type)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --policy-type requires a value"
+                    exit 1
+                fi
+                POLICY_TYPE="$2"
+                shift 2
+                ;;
+            --robot-type)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --robot-type requires a value"
+                    exit 1
+                fi
+                ROBOT_TYPE="$2"
                 shift 2
                 ;;
             *)

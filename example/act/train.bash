@@ -17,17 +17,17 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Default configuration (can be overridden by environment variables)
-REPO_ID="${REPO_ID:-jliu6718/act-so101-place_brick}"
-OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_ROOT}/model}"
-BATCH_SIZE="${BATCH_SIZE:-32}"
-STEPS="${STEPS:-10000}"
-SEED="${SEED:-42}"
-PUSH_TO_HUB="${PUSH_TO_HUB:-true}"
-RESUME="${RESUME:-}"
-DEVICE="${DEVICE:-cuda}"
-TASK="${TASK:-}"
-FORCE_REDOWNLOAD="${FORCE_REDOWNLOAD:-true}"
+# Default configuration
+REPO_ID="jliu6718/act-so101-place_brick"
+OUTPUT_DIR="${PROJECT_ROOT}/model"
+BATCH_SIZE="32"
+STEPS="10000"
+SEED="42"
+PUSH_TO_HUB=true
+RESUME=""
+DEVICE="cuda"
+TASK=""
+FORCE_REDOWNLOAD=true
 
 # Print banner
 print_banner() {
@@ -43,29 +43,27 @@ print_usage() {
     echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
-    echo "  -h, --help          Show this help message"
-    echo "  --dry-run           Show configuration without running"
-    echo "  --task TASK         Task name (overrides TASK env var)"
+    echo "  -h, --help              Show this help message"
+    echo "  --dry-run               Show configuration without running"
+    echo "  --task TASK             Task name (updates repo ID suffix)"
+    echo "  --repo-id ID            Dataset/Model repo ID (default: jliu6718/act-so101-place_brick)"
+    echo "  --output-dir DIR        Output directory for checkpoints (default: \$PROJECT_ROOT/model)"
+    echo "  --batch-size N          Training batch size (default: 32)"
+    echo "  --steps N               Number of training steps (default: 10000)"
+    echo "  --seed N                Random seed (default: 42)"
+    echo "  --push-to-hub           Push model to HuggingFace Hub (default)"
+    echo "  --no-push-to-hub        Don't push to HuggingFace Hub"
+    echo "  --resume PATH           Resume from checkpoint"
+    echo "  --device DEVICE         Compute device: cuda, cpu, mps (default: cuda)"
+    echo "  --force-redownload      Force re-download dataset (default)"
+    echo "  --no-force-redownload   Don't force re-download dataset"
     echo ""
-    echo -e "${BLUE}Environment Variables:${NC}"
-    echo "  REPO_ID             Dataset/Model repo ID on HuggingFace Hub"
-    echo "                      Format: {username}/{policy}-{robot}-{task}"
-    echo "                      (default: jliu6718/act-so101-place_brick)"
-    echo "  OUTPUT_DIR          Local output directory for model checkpoints"
-    echo "                      (default: \$PROJECT_ROOT/model)"
-    echo "  BATCH_SIZE          Training batch size (default: 32)"
-    echo "  STEPS               Number of training steps (default: 10000)"
-    echo "  SEED                Random seed for reproducibility (default: 42)"
-    echo "  PUSH_TO_HUB         Push trained model to HuggingFace Hub (default: true)"
-    echo "  RESUME              Path to checkpoint to resume from (default: none)"
-    echo "  DEVICE              Compute device: cuda, cpu, mps (default: cuda)"
-    echo "  FORCE_REDOWNLOAD    Force re-download dataset from Hub (default: true)"
-    echo ""
-    echo -e "${BLUE}Example:${NC}"
-    echo "  REPO_ID=myuser/act-so101-pick_cube STEPS=20000 $0"
+    echo -e "${BLUE}Examples:${NC}"
+    echo "  $0 --repo-id myuser/act-so101-pick_cube --steps 20000"
+    echo "  $0 --task pick_cube"
     echo ""
     echo -e "${BLUE}Resume Training:${NC}"
-    echo "  RESUME=/path/to/checkpoint $0"
+    echo "  $0 --resume /path/to/checkpoint"
 }
 
 # Print configuration
@@ -230,6 +228,78 @@ main() {
                 fi
                 TASK="$2"
                 shift 2
+                ;;
+            --repo-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --repo-id requires a value"
+                    exit 1
+                fi
+                REPO_ID="$2"
+                shift 2
+                ;;
+            --output-dir)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --output-dir requires a value"
+                    exit 1
+                fi
+                OUTPUT_DIR="$2"
+                shift 2
+                ;;
+            --batch-size)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --batch-size requires a value"
+                    exit 1
+                fi
+                BATCH_SIZE="$2"
+                shift 2
+                ;;
+            --steps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --steps requires a value"
+                    exit 1
+                fi
+                STEPS="$2"
+                shift 2
+                ;;
+            --seed)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --seed requires a value"
+                    exit 1
+                fi
+                SEED="$2"
+                shift 2
+                ;;
+            --push-to-hub)
+                PUSH_TO_HUB=true
+                shift
+                ;;
+            --no-push-to-hub)
+                PUSH_TO_HUB=false
+                shift
+                ;;
+            --resume)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --resume requires a value"
+                    exit 1
+                fi
+                RESUME="$2"
+                shift 2
+                ;;
+            --device)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --device requires a value"
+                    exit 1
+                fi
+                DEVICE="$2"
+                shift 2
+                ;;
+            --force-redownload)
+                FORCE_REDOWNLOAD=true
+                shift
+                ;;
+            --no-force-redownload)
+                FORCE_REDOWNLOAD=false
+                shift
                 ;;
             *)
                 echo -e "${RED}Error:${NC} Unknown option: $1"

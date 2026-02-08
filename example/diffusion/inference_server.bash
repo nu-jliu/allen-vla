@@ -17,12 +17,12 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Default configuration (can be overridden by environment variables)
-CHECKPOINT="${CHECKPOINT:-jliu6718/diffusion-so101-place_brick}"
-HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-8000}"
-DEVICE="${DEVICE:-cuda}"
-TASK="${TASK:-place_brick}"
+# Default configuration
+CHECKPOINT="jliu6718/diffusion-so101-place_brick"
+HOST="0.0.0.0"
+PORT="8000"
+DEVICE="cuda"
+TASK="place_brick"
 
 # Print banner
 print_banner() {
@@ -39,25 +39,21 @@ print_usage() {
     echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
-    echo "  -h, --help          Show this help message"
-    echo "  --dry-run           Show configuration without running"
-    echo "  --task TASK         Task name (overrides TASK env var)"
+    echo "  -h, --help            Show this help message"
+    echo "  --dry-run             Show configuration without running"
+    echo "  --task TASK           Task name (default: place_brick)"
+    echo "  --checkpoint MODEL    Model checkpoint (default: jliu6718/diffusion-so101-place_brick)"
+    echo "  --host HOST           Server bind address (default: 0.0.0.0)"
+    echo "  --port PORT           Server port (default: 8000)"
+    echo "  --device DEVICE       Compute device: cuda, cpu, mps (default: cuda)"
     echo ""
-    echo -e "${BLUE}Environment Variables:${NC}"
-    echo "  CHECKPOINT          Model checkpoint from HuggingFace Hub or local path"
-    echo "                      Format: {username}/{policy}-{robot}-{task}"
-    echo "                      (default: jliu6718/diffusion-so101-place_brick)"
-    echo "  HOST                Server bind address (default: 0.0.0.0)"
-    echo "  PORT                Server port (default: 8000)"
-    echo "  DEVICE              Compute device: cuda, cpu, mps (default: cuda)"
-    echo "  TASK                Task name for logging (default: place_brick)"
-    echo ""
-    echo -e "${BLUE}Example:${NC}"
-    echo "  CHECKPOINT=myuser/diffusion-so101-pick_cube PORT=8080 $0"
+    echo -e "${BLUE}Examples:${NC}"
+    echo "  $0 --checkpoint myuser/diffusion-so101-pick_cube --port 8080"
+    echo "  $0 --task pick_cube --device cpu"
     echo ""
     echo -e "${BLUE}Client Connection:${NC}"
     echo "  After starting this server, run the client on the robot machine:"
-    echo "  SERVER_HOST=<this-machine-ip> ./inference_diffusion_client.bash"
+    echo "  ./inference_diffusion_client.bash --server-host <this-machine-ip>"
 }
 
 # Print configuration
@@ -144,7 +140,7 @@ check_dependencies() {
             echo -e "  ${RED}✗${NC} Port ${PORT} is already in use"
             echo -e "    Processes using the port:"
             ss -tulnp | grep ":${PORT} " | sed 's/^/      /'
-            echo -e "    Choose a different port with: PORT=<new-port> $0"
+            echo -e "    Choose a different port with: $0 --port <new-port>"
             exit 1
         else
             echo -e "  ${GREEN}✓${NC} Port ${PORT} is available"
@@ -184,6 +180,38 @@ main() {
                     exit 1
                 fi
                 TASK="$2"
+                shift 2
+                ;;
+            --checkpoint)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --checkpoint requires a value"
+                    exit 1
+                fi
+                CHECKPOINT="$2"
+                shift 2
+                ;;
+            --host)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --host requires a value"
+                    exit 1
+                fi
+                HOST="$2"
+                shift 2
+                ;;
+            --port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --port requires a value"
+                    exit 1
+                fi
+                PORT="$2"
+                shift 2
+                ;;
+            --device)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --device requires a value"
+                    exit 1
+                fi
+                DEVICE="$2"
                 shift 2
                 ;;
             *)

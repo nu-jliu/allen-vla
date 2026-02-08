@@ -16,11 +16,11 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Default configuration (can be overridden by environment variables)
-LEADER_PORT="${LEADER_PORT:-/dev/ttyACM1}"
-LEADER_ID="${LEADER_ID:-my_leader}"
-FOLLOWER_PORT="${FOLLOWER_PORT:-/dev/ttyACM0}"
-FOLLOWER_ID="${FOLLOWER_ID:-my_follower}"
+# Default configuration
+LEADER_PORT="/dev/ttyACM1"
+LEADER_ID="my_leader"
+FOLLOWER_PORT="/dev/ttyACM0"
+FOLLOWER_ID="my_follower"
 
 # Print banner
 print_banner() {
@@ -41,17 +41,15 @@ print_usage() {
     echo -e "${BLUE}Options:${NC}"
     echo "  -h, --help          Show this help message"
     echo "  --dry-run           Show configuration without running"
-    echo ""
-    echo -e "${BLUE}Environment Variables:${NC}"
-    echo "  LEADER_PORT         Leader arm serial port (default: /dev/ttyACM1)"
-    echo "  LEADER_ID           Leader arm ID (default: my_leader)"
-    echo "  FOLLOWER_PORT       Follower arm serial port (default: /dev/ttyACM0)"
-    echo "  FOLLOWER_ID         Follower arm ID (default: my_follower)"
+    echo "  --leader-port PORT  Leader arm serial port (default: /dev/ttyACM1)"
+    echo "  --leader-id ID      Leader arm ID (default: my_leader)"
+    echo "  --follower-port PORT Follower arm serial port (default: /dev/ttyACM0)"
+    echo "  --follower-id ID    Follower arm ID (default: my_follower)"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
     echo "  $0 so101_leader     # Calibrate leader arm"
     echo "  $0 so101_follower   # Calibrate follower arm"
-    echo "  LEADER_PORT=/dev/ttyUSB0 $0 so101_leader"
+    echo "  $0 so101_leader --leader-port /dev/ttyUSB0"
 }
 
 # Print configuration
@@ -140,6 +138,50 @@ main() {
             --dry-run)
                 DRY_RUN=true
                 shift
+                ;;
+            --leader-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --leader-port requires a value"
+                    exit 1
+                fi
+                LEADER_PORT="$2"
+                if [[ "${ARM_TYPE}" == "so101_leader" ]]; then
+                    ARM_PORT="$2"
+                fi
+                shift 2
+                ;;
+            --leader-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --leader-id requires a value"
+                    exit 1
+                fi
+                LEADER_ID="$2"
+                if [[ "${ARM_TYPE}" == "so101_leader" ]]; then
+                    ARM_ID="$2"
+                fi
+                shift 2
+                ;;
+            --follower-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --follower-port requires a value"
+                    exit 1
+                fi
+                FOLLOWER_PORT="$2"
+                if [[ "${ARM_TYPE}" == "so101_follower" ]]; then
+                    ARM_PORT="$2"
+                fi
+                shift 2
+                ;;
+            --follower-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --follower-id requires a value"
+                    exit 1
+                fi
+                FOLLOWER_ID="$2"
+                if [[ "${ARM_TYPE}" == "so101_follower" ]]; then
+                    ARM_ID="$2"
+                fi
+                shift 2
                 ;;
             *)
                 echo -e "${RED}Error:${NC} Unknown option: $1"

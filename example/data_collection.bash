@@ -17,21 +17,21 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Default configuration (can be overridden by environment variables)
-LEADER_PORT="${LEADER_PORT:-/dev/ttyACM1}"
-LEADER_ID="${LEADER_ID:-my_leader}"
-FOLLOWER_PORT="${FOLLOWER_PORT:-/dev/ttyACM0}"
-FOLLOWER_ID="${FOLLOWER_ID:-my_follower}"
-USERNAME="${USERNAME:-jliu6718}"
-ROBOT_TYPE="${ROBOT_TYPE:-so101}"
-TASK="${TASK:-place_brick}"
-HZ="${HZ:-30}"
-CAMERA_INDEX="${CAMERA_INDEX:-0}"
-CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
-CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
-DATA_ROOT="${DATA_ROOT:-${PROJECT_ROOT}/data}"
-SERVER_PORT="${SERVER_PORT:-1234}"
-PUSH_TO_HUB="${PUSH_TO_HUB:-true}"
+# Default configuration
+LEADER_PORT="/dev/ttyACM1"
+LEADER_ID="my_leader"
+FOLLOWER_PORT="/dev/ttyACM0"
+FOLLOWER_ID="my_follower"
+USERNAME="jliu6718"
+ROBOT_TYPE="so101"
+TASK="place_brick"
+HZ="30"
+CAMERA_INDEX="0"
+CAMERA_WIDTH="640"
+CAMERA_HEIGHT="480"
+DATA_ROOT="${PROJECT_ROOT}/data"
+SERVER_PORT="1234"
+PUSH_TO_HUB=true
 
 # Policy type (will be set from argument)
 POLICY_TYPE=""
@@ -53,29 +53,27 @@ print_usage() {
     echo "  policy              Policy type: act or diffusion (required)"
     echo ""
     echo -e "${BLUE}Options:${NC}"
-    echo "  -h, --help          Show this help message"
-    echo "  --dry-run           Show configuration without running"
-    echo "  --task TASK         Task name (default: place_brick)"
+    echo "  -h, --help            Show this help message"
+    echo "  --dry-run             Show configuration without running"
+    echo "  --task TASK           Task name (default: place_brick)"
+    echo "  --leader-port PORT    Leader arm serial port (default: /dev/ttyACM1)"
+    echo "  --leader-id ID        Leader arm ID (default: my_leader)"
+    echo "  --follower-port PORT  Follower arm serial port (default: /dev/ttyACM0)"
+    echo "  --follower-id ID      Follower arm ID (default: my_follower)"
+    echo "  --username USER       HuggingFace username (default: jliu6718)"
+    echo "  --robot-type TYPE     Robot type (default: so101)"
+    echo "  --hz HZ               Collection frequency in Hz (default: 30)"
+    echo "  --camera-index INDEX  Camera device index (default: 0)"
+    echo "  --camera-width WIDTH  Camera width (default: 640)"
+    echo "  --camera-height HEIGHT Camera height (default: 480)"
+    echo "  --data-root DIR       Data storage root (default: \$PROJECT_ROOT/data)"
+    echo "  --server-port PORT    Server port (default: 1234)"
+    echo "  --push-to-hub         Push to HuggingFace Hub (default)"
+    echo "  --no-push-to-hub      Don't push to HuggingFace Hub"
     echo ""
-    echo -e "${BLUE}Environment Variables:${NC}"
-    echo "  LEADER_PORT         Leader arm serial port (default: /dev/ttyACM1)"
-    echo "  LEADER_ID           Leader arm ID (default: my_leader)"
-    echo "  FOLLOWER_PORT       Follower arm serial port (default: /dev/ttyACM0)"
-    echo "  FOLLOWER_ID         Follower arm ID (default: my_follower)"
-    echo "  USERNAME            HuggingFace username (default: jliu6718)"
-    echo "  ROBOT_TYPE          Robot type (default: so101)"
-    echo "  TASK                Task name (default: place_brick)"
-    echo "  HZ                  Collection frequency in Hz (default: 30)"
-    echo "  CAMERA_INDEX        Camera device index (default: 0)"
-    echo "  CAMERA_WIDTH        Camera width (default: 640)"
-    echo "  CAMERA_HEIGHT       Camera height (default: 480)"
-    echo "  DATA_ROOT           Data storage root (default: \$PROJECT_ROOT/data)"
-    echo "  SERVER_PORT         Server port (default: 1234)"
-    echo "  PUSH_TO_HUB         Push to HuggingFace Hub (default: true)"
-    echo ""
-    echo -e "${BLUE}Example:${NC}"
+    echo -e "${BLUE}Examples:${NC}"
     echo "  $0 act --task pick_cube"
-    echo "  TASK=pick_cube USERNAME=myuser $0 diffusion"
+    echo "  $0 diffusion --username myuser --task pick_cube"
 }
 
 # Print configuration
@@ -205,6 +203,110 @@ main() {
                 fi
                 TASK="$2"
                 shift 2
+                ;;
+            --leader-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --leader-port requires a value"
+                    exit 1
+                fi
+                LEADER_PORT="$2"
+                shift 2
+                ;;
+            --leader-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --leader-id requires a value"
+                    exit 1
+                fi
+                LEADER_ID="$2"
+                shift 2
+                ;;
+            --follower-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --follower-port requires a value"
+                    exit 1
+                fi
+                FOLLOWER_PORT="$2"
+                shift 2
+                ;;
+            --follower-id)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --follower-id requires a value"
+                    exit 1
+                fi
+                FOLLOWER_ID="$2"
+                shift 2
+                ;;
+            --username)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --username requires a value"
+                    exit 1
+                fi
+                USERNAME="$2"
+                shift 2
+                ;;
+            --robot-type)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --robot-type requires a value"
+                    exit 1
+                fi
+                ROBOT_TYPE="$2"
+                shift 2
+                ;;
+            --hz)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --hz requires a value"
+                    exit 1
+                fi
+                HZ="$2"
+                shift 2
+                ;;
+            --camera-index)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-index requires a value"
+                    exit 1
+                fi
+                CAMERA_INDEX="$2"
+                shift 2
+                ;;
+            --camera-width)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-width requires a value"
+                    exit 1
+                fi
+                CAMERA_WIDTH="$2"
+                shift 2
+                ;;
+            --camera-height)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --camera-height requires a value"
+                    exit 1
+                fi
+                CAMERA_HEIGHT="$2"
+                shift 2
+                ;;
+            --data-root)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --data-root requires a value"
+                    exit 1
+                fi
+                DATA_ROOT="$2"
+                shift 2
+                ;;
+            --server-port)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --server-port requires a value"
+                    exit 1
+                fi
+                SERVER_PORT="$2"
+                shift 2
+                ;;
+            --push-to-hub)
+                PUSH_TO_HUB=true
+                shift
+                ;;
+            --no-push-to-hub)
+                PUSH_TO_HUB=false
+                shift
                 ;;
             *)
                 echo -e "${RED}Error:${NC} Unknown option: $1"
