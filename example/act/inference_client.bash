@@ -20,13 +20,13 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 # Default configuration
 ROBOT_PORT="/dev/ttyACM0"
 ROBOT_ID="my_follower"
-CAMERA_INDEX="0"
-CAMERA_NAME="front"
-CAMERA_WIDTH="640"
-CAMERA_HEIGHT="480"
-CAMERA_FPS="30"
+CAMERA_CONFIG="${PROJECT_ROOT}/config/camera.toml"
 SERVER_HOST="192.168.100.146"
 SERVER_PORT="8000"
+FPS="30"
+NUM_EPISODES="1"
+EPISODE_TIME="60"
+RESET_TIME="60"
 
 # Print banner
 print_banner() {
@@ -48,13 +48,13 @@ print_usage() {
     echo "  --test-connection       Test server connectivity and exit"
     echo "  --robot-port PORT       Robot serial port (default: /dev/ttyACM0)"
     echo "  --robot-id ID           Robot ID (default: my_follower)"
-    echo "  --camera-index INDEX    Camera device index (default: 0)"
-    echo "  --camera-name NAME      Camera name identifier (default: front)"
-    echo "  --camera-width WIDTH    Camera width (default: 640)"
-    echo "  --camera-height HEIGHT  Camera height (default: 480)"
-    echo "  --camera-fps FPS        Camera FPS (default: 30)"
+    echo "  --camera-config PATH    Camera config TOML file (default: config/camera.toml)"
     echo "  --server-host HOST      Inference server hostname/IP (default: 192.168.100.146)"
     echo "  --server-port PORT      Inference server port (default: 8000)"
+    echo "  --fps FPS               Control frequency in Hz (default: 30)"
+    echo "  --episode N             Number of episodes to run (default: 1)"
+    echo "  --episode-time SECS     Episode duration in seconds (default: 60)"
+    echo "  --reset-time SECS       Reset time between episodes (default: 60)"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
     echo "  $0 --server-host 10.0.0.5 --server-port 8080"
@@ -75,15 +75,18 @@ print_config() {
     echo -e "  ${YELLOW}Robot ID:${NC}        ${ROBOT_ID}"
     echo ""
     echo -e "${BLUE}Camera Configuration:${NC}"
-    echo -e "  ${YELLOW}Camera Index:${NC}    ${CAMERA_INDEX}"
-    echo -e "  ${YELLOW}Camera Name:${NC}     ${CAMERA_NAME}"
-    echo -e "  ${YELLOW}Resolution:${NC}      ${CAMERA_WIDTH}x${CAMERA_HEIGHT}"
-    echo -e "  ${YELLOW}Camera FPS:${NC}      ${CAMERA_FPS}"
+    echo -e "  ${YELLOW}Config File:${NC}     ${CAMERA_CONFIG}"
     echo ""
     echo -e "${BLUE}Server Configuration:${NC}"
     echo -e "  ${YELLOW}Server Host:${NC}     ${SERVER_HOST}"
     echo -e "  ${YELLOW}Server Port:${NC}     ${SERVER_PORT}"
     echo -e "  ${YELLOW}Server URL:${NC}      http://${SERVER_HOST}:${SERVER_PORT}"
+    echo ""
+    echo -e "${BLUE}Episode Configuration:${NC}"
+    echo -e "  ${YELLOW}FPS:${NC}             ${FPS}"
+    echo -e "  ${YELLOW}Num Episodes:${NC}    ${NUM_EPISODES}"
+    echo -e "  ${YELLOW}Episode Time:${NC}    ${EPISODE_TIME}s"
+    echo -e "  ${YELLOW}Reset Time:${NC}      ${RESET_TIME}s"
     echo ""
 }
 
@@ -108,13 +111,11 @@ check_dependencies() {
         echo -e "  ${GREEN}✓${NC} Robot port found: ${ROBOT_PORT}"
     fi
 
-    # Check camera
-    if [[ ! -e "/dev/video${CAMERA_INDEX}" ]]; then
-        echo -e "  ${YELLOW}⚠${NC} Camera /dev/video${CAMERA_INDEX} not found"
-        echo -e "    Available cameras:"
-        ls /dev/video* 2>/dev/null | sed 's/^/      /' || echo "      No cameras found"
+    # Check camera config
+    if [[ ! -f "${CAMERA_CONFIG}" ]]; then
+        echo -e "  ${YELLOW}⚠${NC} Camera config not found: ${CAMERA_CONFIG}"
     else
-        echo -e "  ${GREEN}✓${NC} Camera found: /dev/video${CAMERA_INDEX}"
+        echo -e "  ${GREEN}✓${NC} Camera config found: ${CAMERA_CONFIG}"
     fi
 
     echo ""
@@ -181,44 +182,12 @@ main() {
                 ROBOT_ID="$2"
                 shift 2
                 ;;
-            --camera-index)
+            --camera-config)
                 if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-index requires a value"
+                    echo -e "${RED}Error:${NC} --camera-config requires a value"
                     exit 1
                 fi
-                CAMERA_INDEX="$2"
-                shift 2
-                ;;
-            --camera-name)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-name requires a value"
-                    exit 1
-                fi
-                CAMERA_NAME="$2"
-                shift 2
-                ;;
-            --camera-width)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-width requires a value"
-                    exit 1
-                fi
-                CAMERA_WIDTH="$2"
-                shift 2
-                ;;
-            --camera-height)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-height requires a value"
-                    exit 1
-                fi
-                CAMERA_HEIGHT="$2"
-                shift 2
-                ;;
-            --camera-fps)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-fps requires a value"
-                    exit 1
-                fi
-                CAMERA_FPS="$2"
+                CAMERA_CONFIG="$2"
                 shift 2
                 ;;
             --server-host)
@@ -235,6 +204,38 @@ main() {
                     exit 1
                 fi
                 SERVER_PORT="$2"
+                shift 2
+                ;;
+            --fps)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --fps requires a value"
+                    exit 1
+                fi
+                FPS="$2"
+                shift 2
+                ;;
+            --episode)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --episode requires a value"
+                    exit 1
+                fi
+                NUM_EPISODES="$2"
+                shift 2
+                ;;
+            --episode-time)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --episode-time requires a value"
+                    exit 1
+                fi
+                EPISODE_TIME="$2"
+                shift 2
+                ;;
+            --reset-time)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    echo -e "${RED}Error:${NC} --reset-time requires a value"
+                    exit 1
+                fi
+                RESET_TIME="$2"
                 shift 2
                 ;;
             *)
@@ -277,13 +278,13 @@ main() {
     exec uv run policy/act/inference_client.py \
         --robot-port "${ROBOT_PORT}" \
         --robot-id "${ROBOT_ID}" \
-        --camera-index "${CAMERA_INDEX}" \
-        --camera-name "${CAMERA_NAME}" \
-        --camera-width "${CAMERA_WIDTH}" \
-        --camera-height "${CAMERA_HEIGHT}" \
-        --camera-fps "${CAMERA_FPS}" \
+        --camera-config "${CAMERA_CONFIG}" \
         --server-host "${SERVER_HOST}" \
-        --server-port "${SERVER_PORT}"
+        --server-port "${SERVER_PORT}" \
+        --fps "${FPS}" \
+        --episode "${NUM_EPISODES}" \
+        --episode-time "${EPISODE_TIME}" \
+        --reset-time "${RESET_TIME}"
 }
 
 main "$@"

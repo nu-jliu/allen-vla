@@ -1,0 +1,25 @@
+# Camera configuration for MJPEG streaming servers.
+# Each [[cameras]] entry defines a camera stream that inference and data collection
+# scripts will subscribe to via http://{host}:{port}/stream.
+#
+# Single camera example:
+#   [[cameras]]
+#   name = "front"
+#   host = "localhost"
+#   port = 8080
+#
+# Multi-camera example:
+#   [[cameras]]
+#   name = "front"
+#   host = "localhost"
+#   port = 8080
+#
+#   [[cameras]]
+#   name = "wrist"
+#   host = "localhost"
+#   port = 8081
+
+[[cameras]]
+name = "front"
+host = "localhost"
+port = 8080

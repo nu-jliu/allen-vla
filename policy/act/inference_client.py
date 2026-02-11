@@ -26,7 +26,7 @@ from lerobot.robots import make_robot_from_config
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 from lerobot.utils.robot_utils import precise_sleep
 
-from utils import setup_logging
+from utils import setup_logging, load_camera_config, query_camera_info
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -90,34 +90,33 @@ class InferenceClient:
     def connect_robot(
         self,
         robot_port: str,
-        camera_index: int | str,
-        camera_name: str = "front",
-        camera_width: int = 640,
-        camera_height: int = 480,
-        camera_fps: int = 30,
+        camera_config_path: str,
         robot_id: str = "inference_robot",
     ) -> None:
         """Connect to the robot.
 
         :param robot_port: Robot serial port
-        :param camera_index: Camera index or path
-        :param camera_name: Camera name in config
-        :param camera_width: Camera width
-        :param camera_height: Camera height
-        :param camera_fps: Camera FPS
+        :param camera_config_path: Path to camera config TOML file
         :param robot_id: Robot ID
         """
         logger.info("Connecting to robot...")
 
-        # Create camera config
-        cameras = {
-            camera_name: OpenCVCameraConfig(
-                index_or_path=camera_index,
-                width=camera_width,
-                height=camera_height,
-                fps=camera_fps,
+        # Load camera configuration from TOML and build stream URLs
+        camera_configs = load_camera_config(camera_config_path)
+        cameras = {}
+        for cam in camera_configs:
+            name = cam["name"]
+            host = cam["host"]
+            cam_port = cam["port"]
+            info = query_camera_info(host, cam_port)
+            stream_url = f"http://{host}:{cam_port}/stream"
+            cameras[name] = OpenCVCameraConfig(
+                index_or_path=stream_url,
+                width=info["width"],
+                height=info["height"],
+                fps=info["fps"],
             )
-        }
+            logger.info(f"  Camera '{name}': {stream_url} ({info['width']}x{info['height']} @ {info['fps']}fps)")
 
         # Create robot config
         robot_config = SO101FollowerConfig(
@@ -137,7 +136,7 @@ class InferenceClient:
 
         logger.info(f"Robot connected on {robot_port}")
         logger.info(f"Robot ID: {robot_id}")
-        logger.info(f"Camera: {camera_name} @ index {camera_index}")
+        logger.info(f"Camera config: {camera_config_path}")
 
     def connect_server(self) -> None:
         """Connect to the inference server."""
@@ -190,7 +189,7 @@ class InferenceClient:
     def get_observation(self) -> dict[str, np.ndarray]:
         """Get observation from the robot.
 
-        :return: Dictionary with observation.state and observation.images.front
+        :return: Dictionary with observation.state and observation.images.{camera_name} per camera
         """
         if self.robot is None:
             raise RuntimeError("Robot not connected")
@@ -204,26 +203,18 @@ class InferenceClient:
             dtype=np.float32,
         )
 
-        # Extract camera image
-        # Find the camera key (e.g., "front")
-        image_key = None
-        for key in raw_obs:
-            if key not in self.state_names:
-                image_key = key
-                break
-
-        if image_key is None:
-            raise RuntimeError("No camera image in observation")
-
-        image = raw_obs[image_key]
-        if not isinstance(image, np.ndarray):
-            image = np.array(image)
-
         # Build observation dict with proper keys
         observation = {
             "observation.state": state,
-            f"observation.images.{image_key}": image,
         }
+
+        # Extract all camera images (non-state keys)
+        for key in raw_obs:
+            if key not in self.state_names:
+                image = raw_obs[key]
+                if not isinstance(image, np.ndarray):
+                    image = np.array(image)
+                observation[f"observation.images.{key}"] = image
 
         return observation
 
@@ -378,18 +369,17 @@ Examples:
   python policy/act/inference_client.py \\
     --server-host localhost \\
     --robot-port /dev/ttyACM0 \\
-    --camera-index 0 \\
-    --num-episodes 10
+    --episode 10
 
   # Inference with custom settings
   python policy/act/inference_client.py \\
     --server-host 192.168.1.100 \\
     --server-port 8000 \\
     --robot-port /dev/ttyACM0 \\
-    --camera-index 0 \\
+    --camera-config config/camera.toml \\
     --fps 30 \\
     --episode-time 60 \\
-    --num-episodes 5
+    --episode 5
         """,
     )
 
@@ -407,13 +397,6 @@ Examples:
         required=True,
         help="Robot serial port (e.g., /dev/ttyACM0)",
     )
-    required.add_argument(
-        "--camera-index",
-        type=str,
-        required=True,
-        help="Camera index or path (e.g., '0' for /dev/video0)",
-    )
-
     # Server configuration
     server = parser.add_argument_group("server configuration")
     server.add_argument(
@@ -435,37 +418,19 @@ Examples:
     # Camera configuration
     camera = parser.add_argument_group("camera configuration")
     camera.add_argument(
-        "--camera-name",
+        "--camera-config",
         type=str,
-        default="front",
-        help="Camera name in config (default: front)",
-    )
-    camera.add_argument(
-        "--camera-width",
-        type=int,
-        default=640,
-        help="Camera width (default: 640)",
-    )
-    camera.add_argument(
-        "--camera-height",
-        type=int,
-        default=480,
-        help="Camera height (default: 480)",
-    )
-    camera.add_argument(
-        "--camera-fps",
-        type=int,
-        default=30,
-        help="Camera FPS (default: 30)",
+        default="config/camera.toml",
+        help="Path to camera config TOML file (default: config/camera.toml)",
     )
 
     # Episode parameters
     episode = parser.add_argument_group("episode parameters")
     episode.add_argument(
-        "--num-episodes",
+        "--episode",
         type=int,
-        default=10,
-        help="Number of episodes to run (default: 10)",
+        default=1,
+        help="Number of episodes to run (default: 1)",
     )
     episode.add_argument(
         "--episode-time",
@@ -498,22 +463,11 @@ def main():
     server_port = args.server_port
     robot_port = args.robot_port
     robot_id = args.robot_id
-    camera_index_str = args.camera_index
-    camera_name = args.camera_name
-    camera_width = args.camera_width
-    camera_height = args.camera_height
-    camera_fps = args.camera_fps
-    num_episodes = args.num_episodes
+    camera_config = args.camera_config
+    num_episodes = args.episode
     episode_time = args.episode_time
     reset_time = args.reset_time
     fps = args.fps
-
-    # Convert camera index to int if numeric
-    camera_index: int | str
-    if camera_index_str.isdigit():
-        camera_index = int(camera_index_str)
-    else:
-        camera_index = camera_index_str
 
     logger.info("=" * 60)
     logger.info("ACT Policy Inference Client")
@@ -523,7 +477,7 @@ def main():
     logger.info(f"  Server: {server_host}:{server_port}")
     logger.info(f"  Robot: so101_follower @ {robot_port}")
     logger.info(f"  Robot ID: {robot_id}")
-    logger.info(f"  Camera: {camera_name} @ index {camera_index_str}")
+    logger.info(f"  Camera config: {camera_config}")
     logger.info(f"  Episodes: {num_episodes}")
     logger.info(f"  Episode time: {episode_time}s")
     logger.info(f"  Reset time: {reset_time}s")
@@ -540,11 +494,7 @@ def main():
         # Connect to robot
         client.connect_robot(
             robot_port=robot_port,
-            camera_index=camera_index,
-            camera_name=camera_name,
-            camera_width=camera_width,
-            camera_height=camera_height,
-            camera_fps=camera_fps,
+            camera_config_path=camera_config,
             robot_id=robot_id,
         )
 

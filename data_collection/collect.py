@@ -8,6 +8,7 @@ import time
 import logging
 import threading
 import socket
+import urllib.request
 import cv2
 import numpy as np
 import shutil
@@ -16,11 +17,65 @@ from argparse import ArgumentParser
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
-from utils import setup_logging, build_dataset_features_for_so101
+from utils import setup_logging, get_camera_feature, build_action_features, get_so101_robot_config, load_camera_config, query_camera_info
+from lerobot.datasets.utils import hw_to_dataset_features
 from robot_utils import add_common_robot_args, initialize_robots
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def camera_subscribe_thread(
+    host: str,
+    port: int,
+    camera_name: str,
+    camera_frames: dict,
+    image_lock: threading.Lock,
+    running_flag: callable,
+) -> None:
+    """Subscribe to an MJPEG stream and update the shared frame dict.
+
+    :param host: Camera server hostname
+    :param port: Camera server port
+    :param camera_name: Name key for this camera in camera_frames
+    :param camera_frames: Shared dict mapping camera name -> latest frame
+    :param image_lock: Lock protecting camera_frames
+    :param running_flag: Callable returning bool, False to stop
+    """
+    url = f"http://{host}:{port}/stream"
+    logger.info(f"Subscribing to camera '{camera_name}' at {url}")
+
+    while running_flag():
+        try:
+            req = urllib.request.Request(url)
+            stream = urllib.request.urlopen(req, timeout=5)
+            buf = b""
+
+            while running_flag():
+                chunk = stream.read(4096)
+                if not chunk:
+                    break
+                buf += chunk
+
+                # Find complete JPEG frames (SOI: 0xFFD8, EOI: 0xFFD9)
+                while True:
+                    start = buf.find(b"\xff\xd8")
+                    end = buf.find(b"\xff\xd9")
+                    if start == -1 or end == -1 or end < start:
+                        break
+                    jpeg = buf[start : end + 2]
+                    buf = buf[end + 2 :]
+                    frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        with image_lock:
+                            camera_frames[camera_name] = frame
+
+        except Exception as e:
+            if running_flag():
+                logger.warning(f"Camera '{camera_name}' stream error: {e}, reconnecting...")
+                time.sleep(1.0)
+
+    logger.info(f"Camera '{camera_name}' subscribe thread stopped")
 
 
 def main() -> None:
@@ -62,22 +117,10 @@ def main() -> None:
         help="Push dataset to Hugging Face Hub after collection",
     )
     parser.add_argument(
-        "--camera-index",
-        type=int,
-        default=0,
-        help="Camera device index (default: 0)",
-    )
-    parser.add_argument(
-        "--camera-width",
-        type=int,
-        default=640,
-        help="Camera width in pixels (default: 640)",
-    )
-    parser.add_argument(
-        "--camera-height",
-        type=int,
-        default=480,
-        help="Camera height in pixels (default: 480)",
+        "--camera-config",
+        type=str,
+        default="config/camera.toml",
+        help="Path to camera config TOML file (default: config/camera.toml)",
     )
     parser.add_argument(
         "--root",
@@ -104,12 +147,25 @@ def main() -> None:
     # Construct repo_id as {username}/{policy}-{robot}-{task}
     repo_id = f"{username}/{policy_type}-{robot_type}-{task}"
     hz = args.hz
-    camera_index = args.camera_index
-    camera_width = args.camera_width
-    camera_height = args.camera_height
     root = args.root
     push = args.push
     port = args.port
+    camera_config_path = args.camera_config
+
+    # Load camera configuration
+    cameras = load_camera_config(camera_config_path)
+    logger.info(f"Loaded {len(cameras)} camera(s) from {camera_config_path}")
+
+    # Query each camera server for its info
+    camera_infos = {}
+    for cam in cameras:
+        name = cam["name"]
+        host = cam["host"]
+        cam_port = cam["port"]
+        logger.info(f"Querying camera '{name}' at {host}:{cam_port}...")
+        info = query_camera_info(host, cam_port)
+        camera_infos[name] = {"host": host, "port": cam_port, **info}
+        logger.info(f"  Camera '{name}': {info['width']}x{info['height']} @ {info['fps']}fps")
 
     logger.info("Starting data collection with configuration:")
     logger.info(f"  Leader port: {leader_port}")
@@ -118,8 +174,9 @@ def main() -> None:
     logger.info(f"  Follower ID: {follower_id}")
     logger.info(f"  Repo ID: {repo_id}")
     logger.info(f"  Control frequency: {hz} Hz")
-    logger.info(f"  Camera index: {camera_index}")
-    logger.info(f"  Camera resolution: {camera_width}x{camera_height}")
+    logger.info(f"  Camera config: {camera_config_path}")
+    for name, info in camera_infos.items():
+        logger.info(f"  Camera '{name}': {info['host']}:{info['port']} ({info['width']}x{info['height']})")
     logger.info(f"  Root directory: {root}")
     logger.info(f"  Command port: {port}")
 
@@ -144,27 +201,15 @@ def main() -> None:
     }
     logger.info(f"Recorded follower initial position: {initial_position}")
 
-    cap = cv2.VideoCapture(camera_index)
-    # Configure camera resolution and FPS
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
-    cap.set(cv2.CAP_PROP_FPS, hz)
-    # Verify camera properties match requested values
-    cam_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    cam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    if cam_width != camera_width or cam_height != camera_height:
-        logger.warning(
-            f"Camera resolution mismatch: requested {camera_width}x{camera_height}, "
-            f"got {cam_width}x{cam_height}. This may cause issues during training/inference."
+    # Build dataset features using robot config + camera info from servers
+    robot_config = get_so101_robot_config()
+    obs_features = hw_to_dataset_features(robot_config["observation"], prefix="observation")
+    for name, info in camera_infos.items():
+        cam_feature = get_camera_feature(
+            camera_name=name, height=info["height"], width=info["width"]
         )
-
-    # Build dataset features using centralized helper function
-    # This ensures features are always consistent between collection and training
-    obs_features, action_features = build_dataset_features_for_so101(
-        cam_height=cam_height,
-        cam_width=cam_width,
-        camera_name="front",
-    )
+        obs_features.update(cam_feature)
+    action_features = build_action_features(robot_config["action"])
 
     logger.info(f"Observation features: {obs_features}")
     logger.info(f"Action features: {action_features}")
@@ -186,32 +231,20 @@ def main() -> None:
     running = True
     recording_lock = threading.Lock()
 
-    # Image capture state
-    latest_image = None
-    image_valid = False
+    # Camera frame state: shared dict of camera_name -> latest BGR frame
+    camera_frames = {}
     image_lock = threading.Lock()
 
-    def image_capture_thread() -> None:
-        """Continuously capture images from camera in separate thread."""
-        nonlocal latest_image, image_valid
-        logger.info("Starting image capture thread...")
-
-        while running:
-            try:
-                succ, image = cap.read()
-                with image_lock:
-                    if succ:
-                        latest_image = image.copy()
-                        image_valid = True
-                    else:
-                        image_valid = False
-                        logger.warning("Failed to capture image")
-                # Small sleep to avoid excessive CPU usage
-                time.sleep(0.001)
-            except Exception as e:
-                logger.error(f"Error in image capture thread: {e}")
-                with image_lock:
-                    image_valid = False
+    # Start a subscribe thread per camera
+    camera_threads = []
+    for name, info in camera_infos.items():
+        t = threading.Thread(
+            target=camera_subscribe_thread,
+            args=(info["host"], info["port"], name, camera_frames, image_lock, lambda: running),
+            daemon=True,
+        )
+        t.start()
+        camera_threads.append(t)
 
     def command_server_thread() -> None:
         """Listen for commands via socket connection (telnet compatible)."""
@@ -384,10 +417,6 @@ def main() -> None:
         server_socket.close()
         logger.info("Command server stopped")
 
-    # Start image capture thread
-    image_thread = threading.Thread(target=image_capture_thread, daemon=True)
-    image_thread.start()
-
     # Start command server thread
     command_thread = threading.Thread(target=command_server_thread, daemon=True)
     command_thread.start()
@@ -395,6 +424,17 @@ def main() -> None:
     logger.info(
         f"Connect via 'telnet localhost {port}' to control recording. Press Ctrl+C to exit."
     )
+
+    # Wait for at least one frame from each camera
+    camera_names = list(camera_infos.keys())
+    logger.info("Waiting for frames from all cameras...")
+    while True:
+        with image_lock:
+            have_all = all(name in camera_frames for name in camera_names)
+        if have_all:
+            break
+        time.sleep(0.1)
+    logger.info("All cameras streaming")
 
     logger.info(f"Starting teleoperation loop at {hz} Hz...")
     period = 1.0 / hz
@@ -404,24 +444,22 @@ def main() -> None:
             action = leader.get_action()
             follower.send_action(action)
 
-            # Get the current recording state and image
+            # Get the current recording state
             with recording_lock:
                 is_recording = recording
 
+            # Grab latest frames from all cameras
             with image_lock:
-                has_valid_image = image_valid
-                current_image = latest_image.copy() if image_valid else None
+                current_frames = {name: camera_frames[name].copy() for name in camera_names if name in camera_frames}
+                has_all_frames = len(current_frames) == len(camera_names)
 
-            # Only record if we're in recording mode AND have a valid image
-            if is_recording and has_valid_image:
+            # Only record if we're in recording mode AND have all camera frames
+            if is_recording and has_all_frames:
                 obs = follower.get_observation()
 
-                # logger.info(f"Observation: {pprint.pformat(obs, indent=2)}")
-                # logger.info(f"Action: {pprint.pformat(action, indent=2)}")
-
                 # Construct frame according to dataset features
-                # Action: convert dict of motor positions to numpy array
                 with recording_lock:
+                    # Action: convert dict of motor positions to numpy array
                     action_array = np.array(
                         [action[name] for name in dataset.features["action"]["names"]],
                         dtype=np.float32,
@@ -439,9 +477,12 @@ def main() -> None:
                     frame = {
                         "action": action_array,
                         "observation.state": obs_state_array,
-                        "observation.images.front": current_image,
                         "task": task,
                     }
+
+                    # Add all camera images
+                    for cam_name, cam_image in current_frames.items():
+                        frame[f"observation.images.{cam_name}"] = cam_image
 
                     dataset.add_frame(frame=frame)
 
@@ -451,9 +492,9 @@ def main() -> None:
                 # Log progress every Hz frames (every 1 second)
                 if current_frame_count % hz == 0:
                     logger.debug(f"Recording: {current_frame_count} frames captured")
-            elif is_recording and not has_valid_image:
+            elif is_recording and not has_all_frames:
                 logger.warning(
-                    "Recording active but no valid image available, skipping frame"
+                    "Recording active but not all camera frames available, skipping frame"
                 )
 
             time.sleep(period)

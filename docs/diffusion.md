@@ -1,22 +1,22 @@
-# ACT (Action Chunking Transformer) Policy
+# Diffusion Policy
 
-This document covers training, inference, and deployment of the ACT policy for the SoArm-101 robot.
+This document covers training, inference, and deployment of the Diffusion policy for the SoArm-101 robot.
 
 ## Training
 
-Train an ACT policy on your collected datasets:
+Train a Diffusion policy on your collected datasets:
 
 ```bash
-python policy/act/train.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+python policy/diffusion/train.py --repo-id your_username/your_dataset --output-dir ./outputs/diffusion_run1
 ```
 
 Or using uv:
 
 ```bash
-uv run python policy/act/train.py --repo-id your_username/your_dataset --output-dir ./outputs/act_run1
+uv run python policy/diffusion/train.py --repo-id your_username/your_dataset --output-dir ./outputs/diffusion_run1
 ```
 
-> **Example**: See [`example/act/train.bash`](../example/act/train.bash) for a complete example.
+> **Example**: See [`example/diffusion/train.bash`](../example/diffusion/train.bash) for a complete example.
 
 ### Required Arguments
 
@@ -24,7 +24,7 @@ uv run python policy/act/train.py --repo-id your_username/your_dataset --output-
 
 ### Dataset Source (mutually exclusive, one required)
 
-- `--repo-id`: HuggingFace Hub dataset repo ID (e.g., `username/act-so101-pick_place`)
+- `--repo-id`: HuggingFace Hub dataset repo ID (e.g., `username/diffusion-so101-pick_place`)
 - `--local-dir`: Path to local dataset directory
 - `--revision`: Dataset revision/branch to use (default: `main`)
 
@@ -35,13 +35,17 @@ uv run python policy/act/train.py --repo-id your_username/your_dataset --output-
 - `--num-workers`: Number of dataloader workers (default: `4`)
 - `--seed`: Random seed for reproducibility (default: `42`)
 
-### ACT-Specific Hyperparameters
+### Diffusion-Specific Hyperparameters
 
-- `--chunk-size`: Action prediction chunk size (default: `100`)
-- `--n-action-steps`: Number of action steps to execute per query (default: `100`)
-- `--lr`: Learning rate (default: `1e-5`)
-- `--kl-weight`: KL divergence loss weight for VAE (default: `10.0`)
-- `--dropout`: Dropout rate in transformer (default: `0.1`)
+- `--horizon`: Diffusion model action prediction horizon (default: `16`)
+- `--n-action-steps`: Number of action steps to execute per query (default: `8`)
+- `--n-obs-steps`: Number of observation steps for context (default: `2`)
+- `--num-train-timesteps`: Number of diffusion training timesteps (default: `100`)
+- `--num-inference-steps`: Number of diffusion inference steps (default: same as train timesteps)
+- `--noise-scheduler`: Noise scheduler type, `DDPM` or `DDIM` (default: `DDPM`)
+- `--lr`: Learning rate (default: `1e-4`)
+- `--vision-backbone`: Vision backbone for image encoding (default: `resnet18`)
+- `--crop-shape`: Image crop shape for preprocessing (default: `84 84`)
 
 ### Logging and Checkpointing
 
@@ -54,7 +58,7 @@ uv run python policy/act/train.py --repo-id your_username/your_dataset --output-
 Required when using `--local-dir` with `--push`:
 
 - `--username`: HuggingFace username
-- `--policy-type`: Policy type (e.g., `act`)
+- `--policy-type`: Policy type (e.g., `diffusion`)
 - `--robot-type`: Robot type (e.g., `so101`)
 - `--task`: Task name for the model repo
 
@@ -67,23 +71,25 @@ Required when using `--local-dir` with `--push`:
 **Example with HuggingFace Hub dataset:**
 
 ```bash
-python policy/act/train.py \
-  --repo-id username/act-so101-pick_place \
-  --output-dir ./outputs/act_experiment1 \
+python policy/diffusion/train.py \
+  --repo-id username/diffusion-so101-pick_place \
+  --output-dir ./outputs/diffusion_experiment1 \
   --batch-size 16 \
   --steps 50000 \
-  --lr 5e-5
+  --lr 5e-4 \
+  --horizon 32 \
+  --n-action-steps 16
 ```
 
 **Example with local dataset:**
 
 ```bash
-python policy/act/train.py \
-  --local-dir ./data/act-so101-pick_place \
-  --output-dir ./outputs/act_experiment1 \
+python policy/diffusion/train.py \
+  --local-dir ./data/diffusion-so101-pick_place \
+  --output-dir ./outputs/diffusion_experiment1 \
   --push \
   --username my_username \
-  --policy-type act \
+  --policy-type diffusion \
   --robot-type so101 \
   --task pick_place
 ```
@@ -91,15 +97,15 @@ python policy/act/train.py \
 **Example resuming from checkpoint:**
 
 ```bash
-python policy/act/train.py \
-  --repo-id username/act-so101-pick_place \
-  --output-dir ./outputs/act_experiment1 \
+python policy/diffusion/train.py \
+  --repo-id username/diffusion-so101-pick_place \
+  --output-dir ./outputs/diffusion_experiment1 \
   --resume
 ```
 
 The training script will:
 1. Load the dataset from HuggingFace Hub or local directory
-2. Initialize the ACT model with specified hyperparameters
+2. Initialize the Diffusion model with specified hyperparameters
 3. Train using LeRobot's full training infrastructure with Accelerate
 4. Save checkpoints at specified intervals
 5. Log metrics to console
@@ -107,16 +113,14 @@ The training script will:
 
 ## Inference
 
-![Inference Demo](../assets/inference_demo.gif)
-
-Run inference with a trained ACT policy on the SO101 robot:
+Run inference with a trained Diffusion policy on the SO101 robot:
 
 ```bash
-python policy/act/inference.py \
-  --checkpoint ./outputs/act_training/pretrained_model \
+python policy/diffusion/inference.py \
+  --checkpoint ./outputs/diffusion_training/pretrained_model \
   --robot-port /dev/ttyACM0 \
   --username my_username \
-  --policy-type act \
+  --policy-type diffusion \
   --robot-type so101 \
   --task pick_place
 ```
@@ -124,16 +128,16 @@ python policy/act/inference.py \
 Or using uv:
 
 ```bash
-uv run python policy/act/inference.py \
-  --checkpoint ./outputs/act_training/pretrained_model \
+uv run python policy/diffusion/inference.py \
+  --checkpoint ./outputs/diffusion_training/pretrained_model \
   --robot-port /dev/ttyACM0 \
   --username my_username \
-  --policy-type act \
+  --policy-type diffusion \
   --robot-type so101 \
   --task pick_place
 ```
 
-> **Example**: See [`example/act/inference.bash`](../example/act/inference.bash) for a complete example.
+> **Example**: See [`example/diffusion/inference.bash`](../example/diffusion/inference.bash) for a complete example.
 
 The evaluation repo ID is automatically constructed as `{username}/eval_{policy-type}-{robot-type}-{task}`.
 
@@ -142,7 +146,7 @@ The evaluation repo ID is automatically constructed as `{username}/eval_{policy-
 - `--checkpoint`: Path to trained policy checkpoint or HuggingFace repo ID
 - `--robot-port`: Robot port (e.g., `/dev/ttyACM0`)
 - `--username`: HuggingFace username
-- `--policy-type`: Policy type (e.g., `act`)
+- `--policy-type`: Policy type (e.g., `diffusion`)
 - `--robot-type`: Robot type (e.g., `so101`)
 - `--task`: Task name for the evaluation dataset (e.g., `pick_place`)
 
@@ -176,13 +180,13 @@ The evaluation repo ID is automatically constructed as `{username}/eval_{policy-
 **Example with HuggingFace Hub model:**
 
 ```bash
-python policy/act/inference.py \
-  --checkpoint username/act-so101-pick_place \
+python policy/diffusion/inference.py \
+  --checkpoint username/diffusion-so101-pick_place \
   --robot-port /dev/ttyACM0 \
   --camera-config config/camera.toml \
   --episode 5 \
   --username username \
-  --policy-type act \
+  --policy-type diffusion \
   --robot-type so101 \
   --task pick_place \
   --push-to-hub
@@ -199,13 +203,13 @@ The inference script will:
 
 For setups where the robot runs on a low-power device (e.g., Jetson) and inference runs on a remote GPU server, use the client-server architecture:
 
-> **Examples**: See [`example/act/inference_server.bash`](../example/act/inference_server.bash) and [`example/act/inference_client.bash`](../example/act/inference_client.bash) for complete examples.
+> **Examples**: See [`example/diffusion/inference_server.bash`](../example/diffusion/inference_server.bash) and [`example/diffusion/inference_client.bash`](../example/diffusion/inference_client.bash) for complete examples.
 
 ### Start the Inference Server (GPU Machine)
 
 ```bash
-python policy/act/inference_server.py \
-  --checkpoint ./outputs/act_training/pretrained_model \
+python policy/diffusion/inference_server.py \
+  --checkpoint ./outputs/diffusion_training/pretrained_model \
   --port 8000 \
   --device cuda
 ```
@@ -221,7 +225,7 @@ python policy/act/inference_server.py \
 ### Start the Robot Client (Robot Machine)
 
 ```bash
-python policy/act/inference_client.py \
+python policy/diffusion/inference_client.py \
   --server-host <gpu_server_ip> \
   --robot-port /dev/ttyACM0 \
   --episode 10
@@ -243,15 +247,15 @@ python policy/act/inference_client.py \
 
 On the GPU server (e.g., `192.168.1.100`):
 ```bash
-python policy/act/inference_server.py \
-  --checkpoint username/act-so101-pick_place \
+python policy/diffusion/inference_server.py \
+  --checkpoint username/diffusion-so101-pick_place \
   --port 8000 \
   --device cuda
 ```
 
 On the Jetson (robot machine):
 ```bash
-python policy/act/inference_client.py \
+python policy/diffusion/inference_client.py \
   --server-host 192.168.1.100 \
   --server-port 8000 \
   --robot-port /dev/ttyACM0 \

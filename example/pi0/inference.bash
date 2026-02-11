@@ -1,7 +1,7 @@
 #!/bin/bash
-# Inference Script for ACT Policy (Standalone)
+# Inference Script for PI0 Policy (Standalone)
 # Evaluation dataset will be pushed to: {username}/eval_{policy}-{robot}-{task}
-# Example: jliu6718/eval_act-so101-place_brick
+# Example: jliu6718/eval_pi0-so101-place_brick
 
 set -e
 
@@ -18,13 +18,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Default configuration
-CHECKPOINT="jliu6718/act-so101-place_brick"
+CHECKPOINT="jliu6718/pi0-so101-place_brick"
 ROBOT_PORT="/dev/ttyACM0"
 ROBOT_ID="my_follower"
 CAMERA_CONFIG="${PROJECT_ROOT}/config/camera.toml"
 FPS="30"
 USERNAME="jliu6718"
-POLICY_TYPE="act"
+POLICY_TYPE="pi0"
 ROBOT_TYPE="so101"
 TASK="place_brick"
 DATA_ROOT="${PROJECT_ROOT}/data"
@@ -36,7 +36,7 @@ NUM_EPISODES="1"
 print_banner() {
     echo -e "${CYAN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         ACT Policy - Standalone Inference Script          ║"
+    echo "║         PI0 Policy - Standalone Inference Script          ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -49,13 +49,13 @@ print_usage() {
     echo "  -h, --help              Show this help message"
     echo "  --dry-run               Show configuration without running"
     echo "  --task TASK             Task name (default: place_brick)"
-    echo "  --checkpoint MODEL      Model checkpoint (default: jliu6718/act-so101-place_brick)"
+    echo "  --checkpoint MODEL      Model checkpoint (default: jliu6718/pi0-so101-place_brick)"
     echo "  --robot-port PORT       Robot serial port (default: /dev/ttyACM0)"
     echo "  --robot-id ID           Robot ID (default: my_follower)"
     echo "  --camera-config PATH    Camera config TOML file (default: config/camera.toml)"
     echo "  --fps FPS               Inference FPS (default: 30)"
     echo "  --username USER         HuggingFace username (default: jliu6718)"
-    echo "  --policy-type TYPE      Policy type (default: act)"
+    echo "  --policy-type TYPE      Policy type (default: pi0)"
     echo "  --robot-type TYPE       Robot type (default: so101)"
     echo "  --data-root DIR         Data storage root (default: \$PROJECT_ROOT/data)"
     echo "  --push-to-hub           Push evaluation to HuggingFace Hub (default)"
@@ -64,7 +64,7 @@ print_usage() {
     echo "  --episode N             Number of episodes to run (default: 1)"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
-    echo "  $0 --checkpoint myuser/act-so101-pick_cube --task pick_cube"
+    echo "  $0 --checkpoint myuser/pi0-so101-pick_cube --task pick_cube"
     echo "  $0 --display-video --fps 15"
 }
 
@@ -299,7 +299,7 @@ main() {
     echo ""
 
     cd "${PROJECT_ROOT}"
-    exec uv run policy/act/inference.py \
+    exec uv run policy/pi0/inference.py \
         --checkpoint "${CHECKPOINT}" \
         --robot-port "${ROBOT_PORT}" \
         --camera-config "${CAMERA_CONFIG}" \

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Robot Client for Diffusion policy inference.
+Robot Client for PI0 policy inference.
 
 This client connects to the robot and an inference server to execute policy actions.
 It gathers observations from the robot, sends them to the server, and actuates the
@@ -361,18 +361,18 @@ class InferenceClient:
 def parse_args() -> Namespace:
     """Parse command line arguments."""
     parser = ArgumentParser(
-        description="Robot Client for Diffusion Policy Inference",
+        description="Robot Client for PI0 Policy Inference",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic inference
-  python policy/diffusion/inference_client.py \\
+  python policy/pi0/inference_client.py \\
     --server-host localhost \\
     --robot-port /dev/ttyACM0 \\
     --episode 10
 
   # Inference with custom settings
-  python policy/diffusion/inference_client.py \\
+  python policy/pi0/inference_client.py \\
     --server-host 192.168.1.100 \\
     --server-port 8000 \\
     --robot-port /dev/ttyACM0 \\
@@ -470,7 +470,7 @@ def main():
     fps = args.fps
 
     logger.info("=" * 60)
-    logger.info("Diffusion Policy Inference Client")
+    logger.info("PI0 Policy Inference Client")
     logger.info("=" * 60)
     logger.info("")
     logger.info("Configuration:")

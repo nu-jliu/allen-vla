@@ -1,4 +1,8 @@
+import json
 import logging
+import tomllib
+import urllib.request
+from pathlib import Path
 from typing import Any
 
 from lerobot.datasets.utils import hw_to_dataset_features
@@ -25,6 +29,41 @@ class ColoredFormatter(logging.Formatter):
             datefmt="%Y-%m-%d %H:%M:%S",
         )
         return formatter.format(record)
+
+
+def load_camera_config(config_path: str) -> list[dict]:
+    """Load camera configuration from TOML file.
+
+    :param config_path: Path to camera.toml
+    :return: List of camera config dicts with name, host, port
+    """
+    path = Path(config_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Camera config not found: {config_path}")
+
+    with open(path, "rb") as f:
+        config = tomllib.load(f)
+
+    cameras = config.get("cameras", [])
+    if not cameras:
+        raise ValueError(f"No cameras defined in {config_path}")
+
+    return cameras
+
+
+def query_camera_info(host: str, port: int) -> dict:
+    """Query a camera server's /info endpoint for width/height/fps.
+
+    :param host: Camera server hostname
+    :param port: Camera server port
+    :return: Dict with width, height, fps
+    """
+    url = f"http://{host}:{port}/info"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        raise ConnectionError(f"Failed to query camera info at {url}: {e}")
 
 
 def setup_logging() -> None:

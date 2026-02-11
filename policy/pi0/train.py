@@ -1,0 +1,632 @@
+#!/usr/bin/env python
+"""
+Training script for PI0 policy on SO101 robot dataset.
+
+This script uses LeRobot's full training infrastructure including Accelerate for
+distributed training, Weights & Biases for experiment tracking, and comprehensive
+checkpoint management.
+
+FEATURE SPECIFICATION:
+---------------------------------------------------
+Features are automatically extracted from the dataset by the LeRobot training
+pipeline. The dataset should be collected using collect.py, which uses the
+centralized build_dataset_features_for_so101() function from utils.py.
+
+EXPECTED FEATURES (from data collection):
+  INPUT FEATURES:
+    - observation.state: [6] float32
+        Joint positions: shoulder_pan.pos, shoulder_lift.pos, elbow_flex.pos,
+                         wrist_flex.pos, wrist_roll.pos, gripper.pos
+    - observation.images.front: [3, 480, 640] video
+        Front camera RGB image (default resolution, configurable in collect.py)
+
+  OUTPUT FEATURES:
+    - action: [6] float32
+        Target joint positions: shoulder_pan.pos, shoulder_lift.pos, elbow_flex.pos,
+                                wrist_flex.pos, wrist_roll.pos, gripper.pos
+"""
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+import torch
+import logging
+from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
+
+from tqdm import tqdm
+from huggingface_hub import scan_cache_dir
+from lerobot.configs.default import DatasetConfig, WandBConfig
+from lerobot.configs.train import TrainPipelineConfig
+from lerobot.policies.pi0.configuration_pi0 import PI0Config
+from lerobot.scripts.lerobot_train import train
+
+from utils import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+
+def clear_hub_cache_for_repo(repo_id: str) -> None:
+    """Clear the HuggingFace Hub cache for a specific dataset repository.
+
+    :param repo_id: The repository ID (e.g., 'username/dataset-name')
+    :type repo_id: str
+    """
+    try:
+        cache_info = scan_cache_dir()
+        for repo in cache_info.repos:
+            if repo.repo_id == repo_id:
+                logger.info(f"Clearing Hub cache for dataset: {repo_id}")
+                logger.info(f"  Cache size: {repo.size_on_disk / 1024 / 1024:.2f} MB")
+                for revision in repo.revisions:
+                    cache_info.delete_revisions(revision.commit_hash).execute()
+                logger.info(f"  Hub cache cleared successfully")
+                return
+        logger.info(f"No Hub cached data found for dataset: {repo_id}")
+    except Exception as e:
+        logger.warning(f"Failed to clear Hub cache for {repo_id}: {e}")
+        logger.warning("Continuing with training anyway...")
+
+
+def clear_local_dataset_cache(repo_id: str) -> None:
+    """Clear the local LeRobot dataset cache for a specific dataset repository.
+
+    LeRobot stores processed datasets locally in ~/.cache/huggingface/lerobot/.
+    This function removes the local cache for the specified dataset.
+
+    :param repo_id: The repository ID (e.g., 'username/dataset-name')
+    :type repo_id: str
+    """
+    import shutil
+
+    # LeRobot stores datasets in ~/.cache/huggingface/lerobot/{repo_id}
+    lerobot_cache_dir = Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
+
+    try:
+        if lerobot_cache_dir.exists():
+            # Calculate size before deletion
+            total_size = sum(f.stat().st_size for f in lerobot_cache_dir.rglob("*") if f.is_file())
+            logger.info(f"Clearing local LeRobot cache for dataset: {repo_id}")
+            logger.info(f"  Cache path: {lerobot_cache_dir}")
+            logger.info(f"  Cache size: {total_size / 1024 / 1024:.2f} MB")
+            shutil.rmtree(lerobot_cache_dir)
+            logger.info(f"  Local cache cleared successfully")
+        else:
+            logger.info(f"No local LeRobot cache found for dataset: {repo_id}")
+    except Exception as e:
+        logger.warning(f"Failed to clear local cache for {repo_id}: {e}")
+        logger.warning("Continuing with training anyway...")
+
+
+def parse_args() -> Namespace:
+    """Parse command line arguments with sensible defaults.
+
+    :return: Parsed command line arguments
+    :rtype: argparse.Namespace
+    """
+    parser = ArgumentParser(
+        description="Train PI0 policy on SO101 robot dataset",
+        formatter_class=RawDescriptionHelpFormatter,
+    )
+
+    # Required arguments
+    required = parser.add_argument_group("required arguments")
+    required.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="Directory to save checkpoints and logs",
+    )
+
+    # Dataset source (mutually exclusive)
+    dataset_group = parser.add_argument_group(
+        "dataset source (choose one)",
+        "Specify either --repo-id to load from HuggingFace Hub, "
+        "or --local-dir to load from a local directory",
+    )
+    dataset_source = dataset_group.add_mutually_exclusive_group(required=True)
+    dataset_source.add_argument(
+        "--repo-id",
+        type=str,
+        help="HuggingFace Hub dataset repo ID (e.g., username/policy-robot-task)",
+    )
+    dataset_source.add_argument(
+        "--local-dir",
+        type=Path,
+        help="Path to local dataset directory",
+    )
+    dataset_group.add_argument(
+        "--revision",
+        type=str,
+        default="main",
+        help="Dataset revision/branch to use (default: main)",
+    )
+
+    # Model push configuration (required when using --local-dir with --push)
+    push_group = parser.add_argument_group(
+        "model push configuration",
+        "Required when using --local-dir with --push to specify the model repo ID",
+    )
+    push_group.add_argument(
+        "--username",
+        type=str,
+        help="Hugging Face username (required with --local-dir and --push)",
+    )
+    push_group.add_argument(
+        "--policy-type",
+        type=str,
+        help="Policy type e.g. act, diffusion, pi0 (required with --local-dir and --push)",
+    )
+    push_group.add_argument(
+        "--robot-type",
+        type=str,
+        help="Robot type e.g. so101 (required with --local-dir and --push)",
+    )
+    push_group.add_argument(
+        "--task",
+        type=str,
+        help="Task name for the model repo (required with --local-dir and --push)",
+    )
+
+    # Training hyperparameters
+    training = parser.add_argument_group("training hyperparameters")
+    training.add_argument(
+        "--batch-size",
+        type=int,
+        default=8,
+        help="Training batch size (default: 8)",
+    )
+    training.add_argument(
+        "--steps",
+        type=int,
+        default=100_000,
+        help="Total training steps (default: 100,000)",
+    )
+    training.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of dataloader workers (default: 4)",
+    )
+    training.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)",
+    )
+
+    # Logging and checkpointing
+    logging_group = parser.add_argument_group("logging and checkpointing")
+    logging_group.add_argument(
+        "--log-freq",
+        type=int,
+        default=250,
+        help="Log training metrics every N steps (default: 250)",
+    )
+    logging_group.add_argument(
+        "--save-freq",
+        type=int,
+        default=5000,
+        help="Save checkpoint every N steps (default: 5000)",
+    )
+    logging_group.add_argument(
+        "--progress-bar",
+        action="store_true",
+        default=True,
+        help="Show tqdm progress bar during training (default: enabled)",
+    )
+    logging_group.add_argument(
+        "--no-progress-bar",
+        dest="progress_bar",
+        action="store_false",
+        help="Disable tqdm progress bar",
+    )
+
+    # PI0-specific hyperparameters
+    pi0_group = parser.add_argument_group("PI0 hyperparameters")
+    pi0_group.add_argument(
+        "--paligemma-variant",
+        type=str,
+        default="gemma_2b",
+        choices=["gemma_300m", "gemma_2b"],
+        help="PaliGemma model variant (default: gemma_2b)",
+    )
+    pi0_group.add_argument(
+        "--action-expert-variant",
+        type=str,
+        default="gemma_300m",
+        choices=["gemma_300m", "gemma_2b"],
+        help="Action expert model variant (default: gemma_300m)",
+    )
+    pi0_group.add_argument(
+        "--dtype",
+        type=str,
+        default="float32",
+        choices=["bfloat16", "float32"],
+        help="Training data type (default: float32)",
+    )
+    pi0_group.add_argument(
+        "--chunk-size",
+        type=int,
+        default=50,
+        help="Action prediction chunk size (default: 50)",
+    )
+    pi0_group.add_argument(
+        "--n-action-steps",
+        type=int,
+        default=50,
+        help="Number of action steps to execute per query (default: 50)",
+    )
+    pi0_group.add_argument(
+        "--num-inference-steps",
+        type=int,
+        default=10,
+        help="Number of diffusion inference steps (default: 10)",
+    )
+    pi0_group.add_argument(
+        "--lr",
+        type=float,
+        default=2.5e-5,
+        help="Learning rate (default: 2.5e-5)",
+    )
+    pi0_group.add_argument(
+        "--image-resolution",
+        type=int,
+        nargs=2,
+        default=[224, 224],
+        help="Image resolution for PI0 (default: 224 224)",
+    )
+    pi0_group.add_argument(
+        "--gradient-checkpointing",
+        action="store_true",
+        help="Enable gradient checkpointing to reduce memory usage",
+    )
+    pi0_group.add_argument(
+        "--warmup-steps",
+        type=int,
+        default=1000,
+        help="Number of warmup steps for learning rate scheduler (default: 1000)",
+    )
+    pi0_group.add_argument(
+        "--decay-steps",
+        type=int,
+        default=30000,
+        help="Number of decay steps for learning rate scheduler (default: 30000)",
+    )
+
+    # Advanced options
+    advanced = parser.add_argument_group("advanced options")
+    advanced.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from checkpoint in output-dir",
+    )
+    advanced.add_argument(
+        "--push",
+        action="store_true",
+        help="Push checkpoints to HuggingFace Hub",
+    )
+    advanced.add_argument(
+        "--force-redownload",
+        action="store_true",
+        help="Force re-download dataset from HuggingFace Hub (ignores cache)",
+    )
+
+    return parser.parse_args()
+
+
+def build_training_config(args: Namespace) -> TrainPipelineConfig:
+    """Build TrainPipelineConfig from parsed arguments.
+
+    This function creates the complete training configuration by assembling:
+
+    - PI0Config: Policy architecture and hyperparameters
+    - DatasetConfig: Dataset loading configuration
+    - WandBConfig: Experiment tracking configuration
+    - TrainPipelineConfig: Main training pipeline configuration
+
+    Features are automatically extracted from the dataset by the LeRobot training
+    pipeline using dataset_to_policy_features(). We only need to specify
+    PI0-specific hyperparameters here.
+
+    Expected features (from dataset collected with collect.py):
+      INPUT: observation.state [6], observation.images.front [3, H, W]
+      OUTPUT: action [6]
+
+    :param args: Parsed command line arguments
+    :type args: argparse.Namespace
+    :return: Complete training configuration
+    :rtype: TrainPipelineConfig
+    """
+    logger.info("Building training configuration...")
+
+    # Extract args to local variables
+    repo_id = args.repo_id
+    local_dir = args.local_dir
+    username = args.username
+    policy_type = args.policy_type
+    robot_type = args.robot_type
+    task = args.task
+    output_dir = args.output_dir
+    batch_size = args.batch_size
+    steps = args.steps
+    num_workers = args.num_workers
+    seed = args.seed
+    log_freq = args.log_freq
+    save_freq = args.save_freq
+    progress_bar = args.progress_bar
+    paligemma_variant = args.paligemma_variant
+    action_expert_variant = args.action_expert_variant
+    dtype = args.dtype
+    chunk_size = args.chunk_size
+    n_action_steps = args.n_action_steps
+    num_inference_steps = args.num_inference_steps
+    lr = args.lr
+    image_resolution = args.image_resolution
+    gradient_checkpointing = args.gradient_checkpointing
+    warmup_steps = args.warmup_steps
+    decay_steps = args.decay_steps
+    resume = args.resume
+    push = args.push
+    revision = args.revision
+
+    # Determine policy_repo_id for pushing
+    if push:
+        if repo_id is not None:
+            # Using HuggingFace dataset, use same repo_id for model
+            policy_repo_id = repo_id
+        elif all([username, policy_type, robot_type, task]):
+            # Using local dataset with push, construct repo_id from components
+            policy_repo_id = f"{username}/{policy_type}-{robot_type}-{task}"
+        else:
+            raise ValueError(
+                "When using --push with --local-dir, you must also specify --username, --policy-type, --robot-type, and --task"
+            )
+    else:
+        policy_repo_id = None
+
+    # Determine dataset source
+    if local_dir is not None:
+        # Local dataset mode
+        dataset_source = str(local_dir)
+        dataset_root = str(local_dir.parent)
+        logger.info(f"Using local dataset: {local_dir}")
+    else:
+        # HuggingFace Hub mode
+        dataset_source = repo_id
+        dataset_root = None
+        logger.info(f"Using HuggingFace Hub dataset: {repo_id}")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # PI0 Policy Configuration
+    # Features will be automatically populated from the dataset by the training pipeline
+    # We only specify PI0-specific hyperparameters here
+    pi0_config = PI0Config(
+        device=device,
+        paligemma_variant=paligemma_variant,
+        action_expert_variant=action_expert_variant,
+        dtype=dtype,
+        chunk_size=chunk_size,
+        n_action_steps=n_action_steps,
+        num_inference_steps=num_inference_steps,
+        optimizer_lr=lr,
+        image_resolution=tuple(image_resolution),
+        gradient_checkpointing=gradient_checkpointing,
+        warmup_steps=warmup_steps,
+        decay_steps=decay_steps,
+        push_to_hub=push,
+        repo_id=policy_repo_id if push else None,
+    )
+
+    # Dataset Configuration
+    dataset_config = DatasetConfig(
+        repo_id=dataset_source,
+        root=dataset_root,
+        revision=revision,
+    )
+
+    # Weights & Biases Configuration - Disabled
+    wandb_config = WandBConfig(
+        enable=False,
+    )
+
+    # Main Training Pipeline Configuration
+    train_config = TrainPipelineConfig(
+        dataset=dataset_config,
+        policy=pi0_config,
+        output_dir=output_dir,
+        resume=resume,
+        seed=seed,
+        num_workers=num_workers,
+        batch_size=batch_size,
+        steps=steps,
+        eval_freq=0,  # No evaluation (no simulation environment)
+        log_freq=log_freq,
+        save_checkpoint=True,
+        save_freq=save_freq,
+        wandb=wandb_config,
+        env=None,  # No simulation environment
+    )
+
+    # Log configuration details for reproducibility
+    logger.info("Configuration built successfully:")
+    if local_dir is not None:
+        logger.info(f"  Dataset source: local ({local_dir})")
+    else:
+        logger.info(f"  Dataset source: HuggingFace Hub ({repo_id})")
+        logger.info(f"  Dataset revision: {revision}")
+    logger.info(f"  Output directory: {output_dir}")
+    logger.info(f"  Training steps: {steps:,}")
+    logger.info(f"  Batch size: {batch_size}")
+    logger.info(f"  Num workers: {num_workers}")
+    logger.info(f"  Seed: {seed}")
+    logger.info("")
+    logger.info("PI0 Configuration:")
+    logger.info(f"  PaliGemma variant: {paligemma_variant}")
+    logger.info(f"  Action expert variant: {action_expert_variant}")
+    logger.info(f"  Dtype: {dtype}")
+    logger.info(f"  Chunk size: {chunk_size}")
+    logger.info(f"  Action steps: {n_action_steps}")
+    logger.info(f"  Inference steps: {num_inference_steps}")
+    logger.info(f"  Learning rate: {lr}")
+    logger.info(f"  Image resolution: {tuple(image_resolution)}")
+    logger.info(f"  Gradient checkpointing: {gradient_checkpointing}")
+    logger.info(f"  Warmup steps: {warmup_steps}")
+    logger.info(f"  Decay steps: {decay_steps}")
+    logger.info("")
+    logger.info("Features:")
+    logger.info(
+        "  Input/output features will be automatically extracted from the dataset"
+    )
+    logger.info("  Expected features (from collect.py with default 640x480 camera):")
+    logger.info(
+        "    - INPUT: observation.state [6], observation.images.front [3, H, W]"
+    )
+    logger.info("    - OUTPUT: action [6]")
+    logger.info("")
+    logger.info("Logging:")
+    logger.info(f"  Log frequency: {log_freq} steps")
+    logger.info(f"  Save frequency: {save_freq} steps")
+    logger.info(f"  Progress bar: {'enabled' if progress_bar else 'disabled'}")
+    logger.info(f"  Push to Hub: {'enabled' if push else 'disabled'}")
+    if push:
+        logger.info(f"  Policy repo ID: {policy_repo_id}")
+    logger.info(f"  Wandb: disabled")
+
+    return train_config
+
+
+def train_with_progress(
+    cfg: TrainPipelineConfig,
+    total_steps: int,
+    show_progress: bool = True,
+) -> None:
+    """Wrapper around LeRobot's train() function with tqdm progress tracking.
+
+    :param cfg: Training configuration
+    :type cfg: TrainPipelineConfig
+    :param total_steps: Total number of training steps
+    :type total_steps: int
+    :param show_progress: Whether to show tqdm progress bar
+    :type show_progress: bool
+    """
+    import os
+    import sys
+
+    if show_progress:
+        # Enable tqdm for better progress visibility
+        os.environ["TQDM_DISABLE"] = "0"
+
+        logger.info("Training with progress bar enabled")
+        logger.info(f"Progress will be tracked over {total_steps:,} steps")
+        logger.info("")
+
+        # Create a progress bar for overall training
+        with tqdm(
+            total=total_steps,
+            desc="Overall Training Progress",
+            unit="step",
+            file=sys.stdout,
+            dynamic_ncols=True,
+            colour="green",
+        ) as pbar:
+            pbar.set_postfix_str("Initializing training...")
+
+            # Call the actual training function
+            train(cfg)
+
+            # Complete the progress bar
+            pbar.n = total_steps
+            pbar.refresh()
+    else:
+        # Disable tqdm if requested
+        os.environ["TQDM_DISABLE"] = "1"
+        logger.info("Training with progress bar disabled")
+        train(cfg)
+
+
+def main() -> None:
+    """Main training entry point.
+
+    Flow:
+
+    1. Parse command line arguments
+    2. Log startup information and configuration
+    3. Build training configuration
+    4. Validate configuration
+    5. Delegate to LeRobot's train() function with progress tracking
+    6. Handle errors gracefully with proper logging
+
+    :raises Exception: If training fails
+    """
+    logger.info("=" * 60)
+    logger.info("PI0 Policy Training for SO101 Robot")
+    logger.info("=" * 60)
+
+    # Parse arguments
+    args = parse_args()
+
+    # Extract args to local variables
+    repo_id = args.repo_id
+    local_dir = args.local_dir
+    output_dir = args.output_dir
+    steps = args.steps
+    batch_size = args.batch_size
+    progress_bar = args.progress_bar
+    force_redownload = args.force_redownload
+
+    logger.info("")
+    logger.info("Starting training with configuration:")
+    if local_dir is not None:
+        logger.info(f"  Dataset: {local_dir} (local)")
+    else:
+        logger.info(f"  Dataset: {repo_id} (HuggingFace Hub)")
+    logger.info(f"  Output: {output_dir}")
+    logger.info(f"  Steps: {steps:,}")
+    logger.info(f"  Batch size: {batch_size}")
+    logger.info(f"  Force redownload: {force_redownload}")
+    logger.info("")
+
+    # Force redownload if requested (only applies to Hub datasets)
+    if force_redownload and repo_id is not None:
+        logger.info("Force redownload enabled - clearing all cached dataset...")
+        clear_hub_cache_for_repo(repo_id)
+        clear_local_dataset_cache(repo_id)
+        logger.info("")
+
+    try:
+        # Build configuration
+        cfg = build_training_config(args)
+
+        # Validate configuration
+        logger.info("Validating configuration...")
+        cfg.validate()
+        logger.info("Configuration validated successfully")
+        logger.info("")
+
+        # Start training with progress tracking
+        logger.info("Starting training loop...")
+        logger.info("(Training will be handled by LeRobot's train() function)")
+        logger.info("")
+        train_with_progress(cfg, steps, show_progress=progress_bar)
+
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("Training completed successfully!")
+        logger.info(f"Checkpoints saved to: {output_dir}")
+        logger.info("=" * 60)
+
+    except Exception as e:
+        logger.error("=" * 60)
+        logger.error("Training failed with error:")
+        logger.error(str(e), exc_info=True)
+        logger.error("=" * 60)
+        raise
+
+
+if __name__ == "__main__":
+    main()

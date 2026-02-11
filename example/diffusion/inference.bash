@@ -21,11 +21,7 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 CHECKPOINT="jliu6718/diffusion-so101-place_brick"
 ROBOT_PORT="/dev/ttyACM0"
 ROBOT_ID="my_follower"
-CAMERA_INDEX="0"
-CAMERA_NAME="front"
-CAMERA_WIDTH="640"
-CAMERA_HEIGHT="480"
-CAMERA_FPS="30"
+CAMERA_CONFIG="${PROJECT_ROOT}/config/camera.toml"
 FPS="30"
 USERNAME="jliu6718"
 POLICY_TYPE="diffusion"
@@ -34,7 +30,7 @@ TASK="place_brick"
 DATA_ROOT="${PROJECT_ROOT}/data"
 PUSH_TO_HUB=true
 DISPLAY_VIDEO=false
-NUM_EPISODES="10"
+NUM_EPISODES="1"
 EPISODE_TIME="60"
 RESET_TIME="60"
 
@@ -58,11 +54,7 @@ print_usage() {
     echo "  --checkpoint MODEL      Model checkpoint (default: jliu6718/diffusion-so101-place_brick)"
     echo "  --robot-port PORT       Robot serial port (default: /dev/ttyACM0)"
     echo "  --robot-id ID           Robot ID (default: my_follower)"
-    echo "  --camera-index INDEX    Camera device index (default: 0)"
-    echo "  --camera-name NAME      Camera name identifier (default: front)"
-    echo "  --camera-width WIDTH    Camera width (default: 640)"
-    echo "  --camera-height HEIGHT  Camera height (default: 480)"
-    echo "  --camera-fps FPS        Camera FPS (default: 30)"
+    echo "  --camera-config PATH    Camera config TOML file (default: config/camera.toml)"
     echo "  --fps FPS               Inference FPS (default: 30)"
     echo "  --username USER         HuggingFace username (default: jliu6718)"
     echo "  --policy-type TYPE      Policy type (default: diffusion)"
@@ -71,13 +63,13 @@ print_usage() {
     echo "  --push-to-hub           Push evaluation to HuggingFace Hub (default)"
     echo "  --no-push-to-hub        Don't push to HuggingFace Hub"
     echo "  --display-video         Display video feed"
-    echo "  --num-episodes N        Number of episodes to run (default: 10)"
+    echo "  --episode N        Number of episodes to run (default: 10)"
     echo "  --episode-time SECS     Episode duration in seconds (default: 60)"
     echo "  --reset-time SECS       Reset time between episodes (default: 60)"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
     echo "  $0 --checkpoint myuser/diffusion-so101-pick_cube --task pick_cube"
-    echo "  $0 --num-episodes 5 --episode-time 30"
+    echo "  $0 --episode 5 --episode-time 30"
 }
 
 # Print configuration
@@ -96,10 +88,7 @@ print_config() {
     echo -e "  ${YELLOW}Robot Type:${NC}      ${ROBOT_TYPE}"
     echo ""
     echo -e "${BLUE}Camera Configuration:${NC}"
-    echo -e "  ${YELLOW}Camera Index:${NC}    ${CAMERA_INDEX}"
-    echo -e "  ${YELLOW}Camera Name:${NC}     ${CAMERA_NAME}"
-    echo -e "  ${YELLOW}Resolution:${NC}      ${CAMERA_WIDTH}x${CAMERA_HEIGHT}"
-    echo -e "  ${YELLOW}Camera FPS:${NC}      ${CAMERA_FPS}"
+    echo -e "  ${YELLOW}Config File:${NC}     ${CAMERA_CONFIG}"
     echo ""
     echo -e "${BLUE}Inference Settings:${NC}"
     echo -e "  ${YELLOW}Inference FPS:${NC}   ${FPS}"
@@ -137,13 +126,11 @@ check_dependencies() {
         echo -e "  ${GREEN}✓${NC} Robot port found: ${ROBOT_PORT}"
     fi
 
-    # Check camera
-    if [[ ! -e "/dev/video${CAMERA_INDEX}" ]]; then
-        echo -e "  ${YELLOW}⚠${NC} Camera /dev/video${CAMERA_INDEX} not found"
-        echo -e "    Available cameras:"
-        ls /dev/video* 2>/dev/null | sed 's/^/      /' || echo "      No cameras found"
+    # Check camera config
+    if [[ ! -f "${CAMERA_CONFIG}" ]]; then
+        echo -e "  ${YELLOW}⚠${NC} Camera config not found: ${CAMERA_CONFIG}"
     else
-        echo -e "  ${GREEN}✓${NC} Camera found: /dev/video${CAMERA_INDEX}"
+        echo -e "  ${GREEN}✓${NC} Camera config found: ${CAMERA_CONFIG}"
     fi
 
     # Check for CUDA if available
@@ -213,44 +200,12 @@ main() {
                 ROBOT_ID="$2"
                 shift 2
                 ;;
-            --camera-index)
+            --camera-config)
                 if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-index requires a value"
+                    echo -e "${RED}Error:${NC} --camera-config requires a value"
                     exit 1
                 fi
-                CAMERA_INDEX="$2"
-                shift 2
-                ;;
-            --camera-name)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-name requires a value"
-                    exit 1
-                fi
-                CAMERA_NAME="$2"
-                shift 2
-                ;;
-            --camera-width)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-width requires a value"
-                    exit 1
-                fi
-                CAMERA_WIDTH="$2"
-                shift 2
-                ;;
-            --camera-height)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-height requires a value"
-                    exit 1
-                fi
-                CAMERA_HEIGHT="$2"
-                shift 2
-                ;;
-            --camera-fps)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-fps requires a value"
-                    exit 1
-                fi
-                CAMERA_FPS="$2"
+                CAMERA_CONFIG="$2"
                 shift 2
                 ;;
             --fps)
@@ -305,9 +260,9 @@ main() {
                 DISPLAY_VIDEO=true
                 shift
                 ;;
-            --num-episodes)
+            --episode)
                 if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --num-episodes requires a value"
+                    echo -e "${RED}Error:${NC} --episode requires a value"
                     exit 1
                 fi
                 NUM_EPISODES="$2"
@@ -371,18 +326,14 @@ main() {
     exec uv run policy/diffusion/inference.py \
         --checkpoint "${CHECKPOINT}" \
         --robot-port "${ROBOT_PORT}" \
-        --camera-index "${CAMERA_INDEX}" \
+        --camera-config "${CAMERA_CONFIG}" \
         --username "${USERNAME}" \
         --policy-type "${POLICY_TYPE}" \
         --robot-type "${ROBOT_TYPE}" \
         --task "${TASK}" \
         --robot-id "${ROBOT_ID}" \
-        --camera-name "${CAMERA_NAME}" \
-        --camera-width "${CAMERA_WIDTH}" \
-        --camera-height "${CAMERA_HEIGHT}" \
-        --camera-fps "${CAMERA_FPS}" \
         --fps "${FPS}" \
-        --num-episodes "${NUM_EPISODES}" \
+        --episode "${NUM_EPISODES}" \
         --episode-time "${EPISODE_TIME}" \
         --reset-time "${RESET_TIME}" \
         --root "${DATA_ROOT}" \

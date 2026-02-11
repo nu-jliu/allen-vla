@@ -11,3 +11,6 @@ dependencies = [
     "pynput>=1.8.1",
     "uuid>=1.30",
 ]
+
+[project.optional-dependencies]
+realsense = ["pyrealsense2>=2.55.1"]

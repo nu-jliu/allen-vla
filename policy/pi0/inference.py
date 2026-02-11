@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Inference/Evaluation script for Diffusion policy on SO101 robot using LeRobot's record infrastructure.
+Inference/Evaluation script for PI0 policy on SO101 robot using LeRobot's record infrastructure.
 
 This script uses lerobot-record with a trained policy to evaluate the model on real hardware.
 The policy controls the robot autonomously and the results are saved as a dataset for analysis.
@@ -33,31 +33,31 @@ def parse_args() -> Namespace:
     :rtype: argparse.Namespace
     """
     parser = ArgumentParser(
-        description="Run inference with trained Diffusion policy on SO101 robot",
+        description="Run inference with trained PI0 policy on SO101 robot",
         formatter_class=RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic evaluation with local checkpoint
-  # Evaluation repo ID will be: my_username/eval_diffusion-so101-pick_place
-  python policy/diffusion/inference.py \\
-    --checkpoint ./outputs/diffusion_training/pretrained_model \\
+  # Evaluation repo ID will be: my_username/eval_pi0-so101-pick_place
+  python policy/pi0/inference.py \\
+    --checkpoint ./outputs/pi0_training/pretrained_model \\
     --robot-port /dev/ttyACM0 \\
     --episode 10 \\
     --username my_username \\
-    --policy-type diffusion \\
+    --policy-type pi0 \\
     --robot-type so101 \\
     --task pick_place
 
   # Evaluation with HuggingFace Hub model
   # Checkpoint format: username/policy-robot-task
-  # Evaluation repo ID will be: username/eval_diffusion-so101-pick_place
-  python policy/diffusion/inference.py \\
-    --checkpoint username/diffusion-so101-pick_place \\
+  # Evaluation repo ID will be: username/eval_pi0-so101-pick_place
+  python policy/pi0/inference.py \\
+    --checkpoint username/pi0-so101-pick_place \\
     --robot-port /dev/ttyACM0 \\
     --camera-config config/camera.toml \\
     --episode 5 \\
     --username username \\
-    --policy-type diffusion \\
+    --policy-type pi0 \\
     --robot-type so101 \\
     --task pick_place \\
     --push-to-hub
@@ -88,7 +88,7 @@ Examples:
         "--policy-type",
         type=str,
         required=True,
-        help="Policy type (e.g., act, diffusion)",
+        help="Policy type (e.g., act, diffusion, pi0)",
     )
     required.add_argument(
         "--robot-type",
@@ -272,8 +272,6 @@ def create_record_config(args: Namespace) -> RecordConfig:
     policy_config.pretrained_path = checkpoint
 
     # Create main record configuration
-    # Note: For headless mode, display_data=False and play_sounds=False
-    # The library's is_headless() check will handle keyboard listener appropriately
     config = RecordConfig(
         robot=robot_config,
         dataset=dataset_config,
@@ -315,7 +313,7 @@ def main():
     repo_id = f"{username}/eval_{policy_type}-{robot_type}-{task}"
 
     logger.info("=" * 60)
-    logger.info("Diffusion Policy Inference for SO101 Robot")
+    logger.info("PI0 Policy Inference for SO101 Robot")
     logger.info("=" * 60)
     logger.info("")
     logger.info("Configuration:")
