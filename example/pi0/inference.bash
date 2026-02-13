@@ -24,9 +24,8 @@ ROBOT_ID="my_follower"
 CAMERA_CONFIG="${PROJECT_ROOT}/config/camera.toml"
 FPS="30"
 USERNAME="jliu6718"
-POLICY_TYPE="pi0"
 ROBOT_TYPE="so101"
-TASK="place_brick"
+TASK=""
 DATA_ROOT="${PROJECT_ROOT}/data"
 PUSH_TO_HUB=true
 DISPLAY_VIDEO=false
@@ -48,14 +47,13 @@ print_usage() {
     echo -e "${BLUE}Options:${NC}"
     echo "  -h, --help              Show this help message"
     echo "  --dry-run               Show configuration without running"
-    echo "  --task TASK             Task name (default: place_brick)"
+    echo "  --task TASK             Task name (required)"
     echo "  --checkpoint MODEL      Model checkpoint (default: jliu6718/pi0-so101-place_brick)"
     echo "  --robot-port PORT       Robot serial port (default: /dev/ttyACM0)"
     echo "  --robot-id ID           Robot ID (default: my_follower)"
     echo "  --camera-config PATH    Camera config TOML file (default: config/camera.toml)"
     echo "  --fps FPS               Inference FPS (default: 30)"
     echo "  --username USER         HuggingFace username (default: jliu6718)"
-    echo "  --policy-type TYPE      Policy type (default: pi0)"
     echo "  --robot-type TYPE       Robot type (default: so101)"
     echo "  --data-root DIR         Data storage root (default: \$PROJECT_ROOT/data)"
     echo "  --push-to-hub           Push evaluation to HuggingFace Hub (default)"
@@ -76,7 +74,6 @@ print_config() {
     echo ""
     echo -e "${BLUE}Model Configuration:${NC}"
     echo -e "  ${YELLOW}Checkpoint:${NC}      ${CHECKPOINT}"
-    echo -e "  ${YELLOW}Policy Type:${NC}     ${POLICY_TYPE}"
     echo ""
     echo -e "${BLUE}Robot Configuration:${NC}"
     echo -e "  ${YELLOW}Robot Port:${NC}      ${ROBOT_PORT}"
@@ -94,7 +91,7 @@ print_config() {
     echo ""
     echo -e "${BLUE}HuggingFace Hub:${NC}"
     echo -e "  ${YELLOW}Username:${NC}        ${USERNAME}"
-    echo -e "  ${YELLOW}Eval Repo:${NC}       ${USERNAME}/eval_${POLICY_TYPE}-${ROBOT_TYPE}-${TASK}"
+    echo -e "  ${YELLOW}Eval Repo:${NC}       ${USERNAME}/eval_pi0-${ROBOT_TYPE}-${TASK}"
     echo -e "  ${YELLOW}Push to Hub:${NC}     ${PUSH_TO_HUB}"
     echo ""
 }
@@ -217,14 +214,6 @@ main() {
                 USERNAME="$2"
                 shift 2
                 ;;
-            --policy-type)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --policy-type requires a value"
-                    exit 1
-                fi
-                POLICY_TYPE="$2"
-                shift 2
-                ;;
             --robot-type)
                 if [[ -z "$2" || "$2" == --* ]]; then
                     echo -e "${RED}Error:${NC} --robot-type requires a value"
@@ -269,6 +258,12 @@ main() {
         esac
     done
 
+    if [[ -z "${TASK}" ]]; then
+        echo -e "${RED}Error:${NC} --task is required"
+        echo "  Example: $0 --task place_brick"
+        exit 1
+    fi
+
     # If task is specified, update CHECKPOINT to use it
     if [[ -n "${TASK}" && "${CHECKPOINT}" == *-* ]]; then
         # Extract username and policy-robot from CHECKPOINT, replace task
@@ -304,7 +299,6 @@ main() {
         --robot-port "${ROBOT_PORT}" \
         --camera-config "${CAMERA_CONFIG}" \
         --username "${USERNAME}" \
-        --policy-type "${POLICY_TYPE}" \
         --robot-type "${ROBOT_TYPE}" \
         --task "${TASK}" \
         --robot-id "${ROBOT_ID}" \

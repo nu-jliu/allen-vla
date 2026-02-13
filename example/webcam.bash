@@ -33,6 +33,25 @@ print_banner() {
     echo -e "${NC}"
 }
 
+# List available V4L2 devices
+list_v4l2_devices() {
+    echo -e "${BLUE}Available V4L2 devices:${NC}"
+    local found=false
+    for dev in /sys/class/video4linux/video*; do
+        if [[ -e "$dev" ]]; then
+            local index
+            index=$(basename "$dev" | sed 's/video//')
+            local name
+            name=$(cat "$dev/name" 2>/dev/null || echo "unknown")
+            echo -e "  ${YELLOW}/dev/video${index}${NC}  ${name}"
+            found=true
+        fi
+    done
+    if [[ "$found" == "false" ]]; then
+        echo "  No V4L2 devices found"
+    fi
+}
+
 # Print usage
 print_usage() {
     echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
@@ -46,6 +65,8 @@ print_usage() {
     echo "  --height HEIGHT         Camera height (default: 480)"
     echo "  --fps FPS               Target FPS (default: 30)"
     echo "  --jpeg-quality QUALITY  JPEG quality 1-100 (default: 80)"
+    echo ""
+    list_v4l2_devices
     echo ""
     echo -e "${BLUE}Examples:${NC}"
     echo "  $0"

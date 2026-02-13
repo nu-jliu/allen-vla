@@ -71,8 +71,8 @@ class InferenceServer:
     def __init__(
         self,
         checkpoint: str,
+        task: str,
         device: str = "cuda",
-        task: str = "Policy evaluation",
     ):
         """Initialize the inference server.
 
@@ -387,6 +387,12 @@ Examples:
         required=True,
         help="Path to trained policy checkpoint or HuggingFace repo ID",
     )
+    required.add_argument(
+        "--task",
+        type=str,
+        required=True,
+        help="Task name (e.g., place_brick, pick_cube)",
+    )
 
     # Server configuration
     server = parser.add_argument_group("server configuration")
@@ -411,13 +417,6 @@ Examples:
         default="cuda",
         help="Device to run inference on (default: cuda)",
     )
-    inference.add_argument(
-        "--task",
-        type=str,
-        default="Policy evaluation",
-        help="Task description for inference",
-    )
-
     return parser.parse_args()
 
 
@@ -434,8 +433,8 @@ def main():
 
     server = InferenceServer(
         checkpoint=checkpoint,
-        device=device,
         task=task,
+        device=device,
     )
 
     server.start(host=host, port=port)

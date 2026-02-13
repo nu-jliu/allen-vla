@@ -1,7 +1,7 @@
 #!/bin/bash
-# Data Collection Script for ACT or Diffusion Policy
-# Dataset will be pushed to: {username}/{policy}-{robot}-{task}
-# Example: jliu6718/act-so101-place_brick
+# Data Collection Script
+# Dataset will be pushed to: {username}/{robot}-{task}
+# Example: jliu6718/so101-place_brick
 
 set -e
 
@@ -24,17 +24,11 @@ FOLLOWER_PORT="/dev/ttyACM0"
 FOLLOWER_ID="my_follower"
 USERNAME="jliu6718"
 ROBOT_TYPE="so101"
-TASK="place_brick"
+TASK=""
 HZ="30"
-CAMERA_INDEX="0"
-CAMERA_WIDTH="640"
-CAMERA_HEIGHT="480"
 DATA_ROOT="${PROJECT_ROOT}/data"
 SERVER_PORT="1234"
 PUSH_TO_HUB=true
-
-# Policy type (will be set from argument)
-POLICY_TYPE=""
 
 # Print banner
 print_banner() {
@@ -47,15 +41,12 @@ print_banner() {
 
 # Print usage
 print_usage() {
-    echo -e "${BLUE}Usage:${NC} $0 <policy> [OPTIONS]"
-    echo ""
-    echo -e "${BLUE}Arguments:${NC}"
-    echo "  policy              Policy type: act or diffusion (required)"
+    echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
     echo "  -h, --help            Show this help message"
     echo "  --dry-run             Show configuration without running"
-    echo "  --task TASK           Task name (default: place_brick)"
+    echo "  --task TASK           Task name (required)"
     echo "  --leader-port PORT    Leader arm serial port (default: /dev/ttyACM1)"
     echo "  --leader-id ID        Leader arm ID (default: my_leader)"
     echo "  --follower-port PORT  Follower arm serial port (default: /dev/ttyACM0)"
@@ -63,17 +54,14 @@ print_usage() {
     echo "  --username USER       HuggingFace username (default: jliu6718)"
     echo "  --robot-type TYPE     Robot type (default: so101)"
     echo "  --hz HZ               Collection frequency in Hz (default: 30)"
-    echo "  --camera-index INDEX  Camera device index (default: 0)"
-    echo "  --camera-width WIDTH  Camera width (default: 640)"
-    echo "  --camera-height HEIGHT Camera height (default: 480)"
     echo "  --data-root DIR       Data storage root (default: \$PROJECT_ROOT/data)"
     echo "  --server-port PORT    Server port (default: 1234)"
     echo "  --push-to-hub         Push to HuggingFace Hub (default)"
     echo "  --no-push-to-hub      Don't push to HuggingFace Hub"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
-    echo "  $0 act --task pick_cube"
-    echo "  $0 diffusion --username myuser --task pick_cube"
+    echo "  $0 --task pick_cube"
+    echo "  $0 --username myuser --task pick_cube"
 }
 
 # Print configuration
@@ -89,19 +77,14 @@ print_config() {
     echo -e "  ${YELLOW}Follower ID:${NC}     ${FOLLOWER_ID}"
     echo -e "  ${YELLOW}Robot Type:${NC}      ${ROBOT_TYPE}"
     echo ""
-    echo -e "${BLUE}Camera Configuration:${NC}"
-    echo -e "  ${YELLOW}Camera Index:${NC}    ${CAMERA_INDEX}"
-    echo -e "  ${YELLOW}Resolution:${NC}      ${CAMERA_WIDTH}x${CAMERA_HEIGHT}"
-    echo ""
     echo -e "${BLUE}Collection Settings:${NC}"
     echo -e "  ${YELLOW}Frequency:${NC}       ${HZ} Hz"
-    echo -e "  ${YELLOW}Policy Type:${NC}     ${POLICY_TYPE}"
     echo -e "  ${YELLOW}Task:${NC}            ${TASK}"
     echo -e "  ${YELLOW}Server Port:${NC}     ${SERVER_PORT}"
     echo ""
     echo -e "${BLUE}HuggingFace Hub:${NC}"
     echo -e "  ${YELLOW}Username:${NC}        ${USERNAME}"
-    echo -e "  ${YELLOW}Dataset Repo:${NC}    ${USERNAME}/${POLICY_TYPE}-${ROBOT_TYPE}-${TASK}"
+    echo -e "  ${YELLOW}Dataset Repo:${NC}    ${USERNAME}/${ROBOT_TYPE}-${TASK}"
     echo -e "  ${YELLOW}Push to Hub:${NC}     ${PUSH_TO_HUB}"
     echo ""
 }
@@ -134,15 +117,6 @@ check_dependencies() {
         echo -e "  ${GREEN}✓${NC} Follower port found: ${FOLLOWER_PORT}"
     fi
 
-    # Check camera
-    if [[ ! -e "/dev/video${CAMERA_INDEX}" ]]; then
-        echo -e "  ${YELLOW}⚠${NC} Camera /dev/video${CAMERA_INDEX} not found"
-        echo -e "    Available cameras:"
-        ls /dev/video* 2>/dev/null | sed 's/^/      /' || echo "      No cameras found"
-    else
-        echo -e "  ${GREEN}✓${NC} Camera found: /dev/video${CAMERA_INDEX}"
-    fi
-
     # Check data directory
     if [[ ! -d "${DATA_ROOT}" ]]; then
         echo -e "  ${YELLOW}⚠${NC} Data directory does not exist, will be created: ${DATA_ROOT}"
@@ -170,26 +144,7 @@ main() {
         esac
     done
 
-    # First argument must be policy type
-    if [[ $# -lt 1 ]]; then
-        echo -e "${RED}Error:${NC} Policy type is required"
-        print_usage
-        exit 1
-    fi
-
-    case $1 in
-        act|diffusion)
-            POLICY_TYPE="$1"
-            shift
-            ;;
-        *)
-            echo -e "${RED}Error:${NC} Invalid policy type: $1"
-            echo "  Valid options: act, diffusion"
-            exit 1
-            ;;
-    esac
-
-    # Parse remaining arguments
+    # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             --dry-run)
@@ -260,30 +215,6 @@ main() {
                 HZ="$2"
                 shift 2
                 ;;
-            --camera-index)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-index requires a value"
-                    exit 1
-                fi
-                CAMERA_INDEX="$2"
-                shift 2
-                ;;
-            --camera-width)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-width requires a value"
-                    exit 1
-                fi
-                CAMERA_WIDTH="$2"
-                shift 2
-                ;;
-            --camera-height)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --camera-height requires a value"
-                    exit 1
-                fi
-                CAMERA_HEIGHT="$2"
-                shift 2
-                ;;
             --data-root)
                 if [[ -z "$2" || "$2" == --* ]]; then
                     echo -e "${RED}Error:${NC} --data-root requires a value"
@@ -316,6 +247,12 @@ main() {
         esac
     done
 
+    if [[ -z "${TASK}" ]]; then
+        echo -e "${RED}Error:${NC} --task is required"
+        echo "  Example: $0 --task place_brick"
+        exit 1
+    fi
+
     print_config
     check_dependencies
 
@@ -341,14 +278,10 @@ main() {
         --follower-port "${FOLLOWER_PORT}" \
         --follower-id "${FOLLOWER_ID}" \
         --username "${USERNAME}" \
-        --policy-type "${POLICY_TYPE}" \
         --robot-type "${ROBOT_TYPE}" \
         --task "${TASK}" \
         --hz "${HZ}" \
         ${PUSH_FLAG} \
-        --camera-index "${CAMERA_INDEX}" \
-        --camera-width "${CAMERA_WIDTH}" \
-        --camera-height "${CAMERA_HEIGHT}" \
         --root "${DATA_ROOT}" \
         --port "${SERVER_PORT}"
 }

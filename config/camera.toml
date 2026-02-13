@@ -9,17 +9,17 @@
 #   port = 8080
 #
 # Multi-camera example:
-#   [[cameras]]
-#   name = "front"
-#   host = "localhost"
-#   port = 8080
-#
-#   [[cameras]]
-#   name = "wrist"
-#   host = "localhost"
-#   port = 8081
+# [[cameras]]
+# name = "front"
+# host = "localhost"
+# port = 8080
+
+# [[cameras]]
+# name = "wrist"
+# host = "localhost"
+# port = 8081
 
 [[cameras]]
-name = "front"
+name = "wrist"
 host = "localhost"
 port = 8080

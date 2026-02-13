@@ -1,8 +1,8 @@
 #!/bin/bash
-# Data Collection Script for ACT or Diffusion Policy
+# Data Collection Script
 # Reads camera streams from running MJPEG servers configured in camera.toml
-# Dataset will be pushed to: {username}/{policy}-{robot}-{task}
-# Example: jliu6718/act-so101-place_brick
+# Dataset will be pushed to: {username}/{robot}-{task}
+# Example: jliu6718/so101-place_brick
 
 set -e
 
@@ -32,9 +32,6 @@ DATA_ROOT="${PROJECT_ROOT}/data"
 SERVER_PORT="1234"
 PUSH_TO_HUB=true
 
-# Policy type (will be set from argument)
-POLICY_TYPE=""
-
 # Print banner
 print_banner() {
     echo -e "${CYAN}"
@@ -46,10 +43,7 @@ print_banner() {
 
 # Print usage
 print_usage() {
-    echo -e "${BLUE}Usage:${NC} $0 <policy> [OPTIONS]"
-    echo ""
-    echo -e "${BLUE}Arguments:${NC}"
-    echo "  policy              Policy type: act or diffusion (required)"
+    echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
     echo "  -h, --help            Show this help message"
@@ -69,9 +63,9 @@ print_usage() {
     echo "  --no-push-to-hub      Don't push to HuggingFace Hub"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
-    echo "  $0 act --task pick_cube"
-    echo "  $0 diffusion --username myuser --task pick_cube"
-    echo "  $0 act --camera-config config/multi_camera.toml"
+    echo "  $0 --task pick_cube"
+    echo "  $0 --username myuser --task pick_cube"
+    echo "  $0 --camera-config config/multi_camera.toml --task pick_cube"
 }
 
 # Print configuration
@@ -92,13 +86,12 @@ print_config() {
     echo ""
     echo -e "${BLUE}Collection Settings:${NC}"
     echo -e "  ${YELLOW}Frequency:${NC}       ${HZ} Hz"
-    echo -e "  ${YELLOW}Policy Type:${NC}     ${POLICY_TYPE}"
     echo -e "  ${YELLOW}Task:${NC}            ${TASK}"
     echo -e "  ${YELLOW}Server Port:${NC}     ${SERVER_PORT}"
     echo ""
     echo -e "${BLUE}HuggingFace Hub:${NC}"
     echo -e "  ${YELLOW}Username:${NC}        ${USERNAME}"
-    echo -e "  ${YELLOW}Dataset Repo:${NC}    ${USERNAME}/${POLICY_TYPE}-${ROBOT_TYPE}-${TASK}"
+    echo -e "  ${YELLOW}Dataset Repo:${NC}    ${USERNAME}/${ROBOT_TYPE}-${TASK}"
     echo -e "  ${YELLOW}Push to Hub:${NC}     ${PUSH_TO_HUB}"
     echo ""
 }
@@ -165,26 +158,7 @@ main() {
         esac
     done
 
-    # First argument must be policy type
-    if [[ $# -lt 1 ]]; then
-        echo -e "${RED}Error:${NC} Policy type is required"
-        print_usage
-        exit 1
-    fi
-
-    case $1 in
-        act|diffusion|pi0)
-            POLICY_TYPE="$1"
-            shift
-            ;;
-        *)
-            echo -e "${RED}Error:${NC} Invalid policy type: $1"
-            echo "  Valid options: act, diffusion, pi0"
-            exit 1
-            ;;
-    esac
-
-    # Parse remaining arguments
+    # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             --dry-run)
@@ -320,7 +294,6 @@ main() {
         --follower-port "${FOLLOWER_PORT}" \
         --follower-id "${FOLLOWER_ID}" \
         --username "${USERNAME}" \
-        --policy-type "${POLICY_TYPE}" \
         --robot-type "${ROBOT_TYPE}" \
         --task "${TASK}" \
         --hz "${HZ}" \

@@ -22,7 +22,7 @@ CHECKPOINT="jliu6718/pi0-so101-place_brick"
 HOST="0.0.0.0"
 PORT="8000"
 DEVICE="cuda"
-TASK="place_brick"
+TASK=""
 
 # Print banner
 print_banner() {
@@ -41,7 +41,7 @@ print_usage() {
     echo -e "${BLUE}Options:${NC}"
     echo "  -h, --help            Show this help message"
     echo "  --dry-run             Show configuration without running"
-    echo "  --task TASK           Task name (default: place_brick)"
+    echo "  --task TASK           Task name (required)"
     echo "  --checkpoint MODEL    Model checkpoint (default: jliu6718/pi0-so101-place_brick)"
     echo "  --host HOST           Server bind address (default: 0.0.0.0)"
     echo "  --port PORT           Server port (default: 8000)"
@@ -220,6 +220,12 @@ main() {
                 ;;
         esac
     done
+
+    if [[ -z "${TASK}" ]]; then
+        echo -e "${RED}Error:${NC} --task is required"
+        echo "  Example: $0 --task place_brick"
+        exit 1
+    fi
 
     # If task is specified, update CHECKPOINT to use it
     if [[ -n "${TASK}" && "${CHECKPOINT}" == *-* ]]; then

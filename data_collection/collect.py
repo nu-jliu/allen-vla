@@ -88,12 +88,6 @@ def main() -> None:
         help="Hugging Face username",
     )
     parser.add_argument(
-        "--policy-type",
-        type=str,
-        required=True,
-        help="Policy type (e.g., act, diffusion)",
-    )
-    parser.add_argument(
         "--robot-type",
         type=str,
         required=True,
@@ -117,12 +111,6 @@ def main() -> None:
         help="Push dataset to Hugging Face Hub after collection",
     )
     parser.add_argument(
-        "--camera-config",
-        type=str,
-        default="config/camera.toml",
-        help="Path to camera config TOML file (default: config/camera.toml)",
-    )
-    parser.add_argument(
         "--root",
         type=str,
         default="data",
@@ -141,16 +129,15 @@ def main() -> None:
     follower_port = args.follower_port
     follower_id = args.follower_id
     username = args.username
-    policy_type = args.policy_type
     robot_type = args.robot_type
     task = args.task
-    # Construct repo_id as {username}/{policy}-{robot}-{task}
-    repo_id = f"{username}/{policy_type}-{robot_type}-{task}"
+    # Construct repo_id as {username}/{robot}-{task}
+    repo_id = f"{username}/{robot_type}-{task}"
     hz = args.hz
     root = args.root
     push = args.push
     port = args.port
-    camera_config_path = args.camera_config
+    camera_config_path = str(Path(__file__).resolve().parent.parent / "config" / "camera.toml")
 
     # Load camera configuration
     cameras = load_camera_config(camera_config_path)

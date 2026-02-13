@@ -57,7 +57,7 @@ flowchart TB
     subgraph TRAINING["🏋️ Training Pipeline"]
         direction TB
         DS_LOAD["Dataset Loader<br/>(LeRobotDataset)"]
-        ACT_MODEL["🧠 ACT Model<br/>(Action Chunking<br/>Transformer)"]
+        ACT_MODEL["🧠 Policy Model<br/>(ACT / Diffusion / π0)"]
         CKPT[("💾 Checkpoints<br/>outputs/pretrained_model/")]
         WANDB["📊 Weights & Biases<br/>(Optional Logging)"]
 
@@ -68,7 +68,7 @@ flowchart TB
 
     subgraph INFERENCE_LOCAL["🤖 Local Inference"]
         direction TB
-        POLICY_L["🧠 ACT Policy"]
+        POLICY_L["🧠 Policy"]
         ROBOT_L["🦾 SO101 Robot"]
         CAM_L["📷 Camera"]
 
@@ -80,7 +80,7 @@ flowchart TB
     subgraph INFERENCE_REMOTE["🌐 Client-Server Inference"]
         direction TB
         subgraph SERVER["☁️ GPU Server"]
-            POLICY_S["🧠 ACT Policy<br/>(CUDA)"]
+            POLICY_S["🧠 Policy<br/>(CUDA)"]
             TCP_S["TCP Server<br/>:8000"]
         end
 
@@ -180,6 +180,15 @@ This will create a virtual environment and install all dependencies specified in
 - pynput (>=1.8.1)
 - uuid (>=1.30)
 
+**Optional: Intel RealSense support**
+
+```bash
+uv sync --extra realsense
+```
+
+This adds:
+- pyrealsense2 (>=2.55.1)
+
 ### 4. Activate the Virtual Environment
 
 ```bash
@@ -201,11 +210,19 @@ allen-vla/
 ├── calibration/
 │   ├── __init__.py
 │   └── calibrate.py              # Calibration script for SO101 follower arm
+├── config/
+│   └── camera.toml               # Camera configuration (MJPEG stream endpoints)
 ├── data_collection/
 │   ├── __init__.py
-│   └── collect.py                # Main data collection script
+│   ├── collect.py                # Main data collection script
+│   ├── realsense.py              # Intel RealSense MJPEG streaming server
+│   └── webcam.py                 # USB webcam MJPEG streaming server
 ├── example/
+│   ├── collect.bash              # Data collection script
 │   ├── data_collection.bash      # Unified data collection script (ACT/Diffusion)
+│   ├── realsense.bash            # Launch RealSense camera server
+│   ├── webcam.bash               # Launch webcam camera server
+│   ├── teleop.bash               # Example: teleoperation
 │   ├── act/                      # ACT policy example scripts
 │   │   ├── inference.bash
 │   │   ├── inference_client.bash
@@ -216,7 +233,11 @@ allen-vla/
 │   │   ├── inference_client.bash
 │   │   ├── inference_server.bash
 │   │   └── train.bash
-│   └── teleop.bash               # Example: teleoperation
+│   └── pi0/                      # Pi0 policy example scripts
+│       ├── inference.bash
+│       ├── inference_client.bash
+│       ├── inference_server.bash
+│       └── train.bash
 ├── policy/
 │   ├── __init__.py
 │   ├── act/
@@ -225,9 +246,15 @@ allen-vla/
 │   │   ├── inference.py          # Local inference (policy + robot on same machine)
 │   │   ├── inference_server.py   # TCP server for remote inference (GPU machine)
 │   │   └── inference_client.py   # Robot client (connects to inference server)
-│   └── diffusion/
+│   ├── diffusion/
+│   │   ├── __init__.py
+│   │   ├── train.py              # Training script for Diffusion policy
+│   │   ├── inference.py          # Local inference
+│   │   ├── inference_server.py   # TCP server for remote inference
+│   │   └── inference_client.py   # Robot client
+│   └── pi0/
 │       ├── __init__.py
-│       ├── train.py              # Training script for Diffusion policy
+│       ├── train.py              # Training script for Pi0 policy
 │       ├── inference.py          # Local inference
 │       ├── inference_server.py   # TCP server for remote inference
 │       └── inference_client.py   # Robot client
@@ -406,6 +433,43 @@ The teleoperation interface will:
 3. Mirror the leader arm's movements on the follower arm in real-time
 4. Print observation data to the console
 5. Run until interrupted with `Ctrl+C`
+
+### Camera Streaming
+
+Camera frames are served via MJPEG streaming servers, supporting both USB webcams and Intel RealSense cameras. Camera endpoints are configured in `config/camera.toml`.
+
+**Start a webcam server:**
+
+```bash
+./example/webcam.bash
+```
+
+**Start a RealSense server:**
+
+```bash
+./example/realsense.bash
+```
+
+**Camera Configuration (`config/camera.toml`):**
+
+```toml
+[[cameras]]
+name = "front"
+host = "localhost"
+port = 8080
+```
+
+Multiple cameras can be configured by adding additional `[[cameras]]` entries with different names and ports. The data collection and inference scripts read this config to subscribe to camera streams.
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--port` | HTTP server port | `8080` |
+| `--width` | Frame width | `640` |
+| `--height` | Frame height | `480` |
+| `--fps` | Capture frame rate | `30` |
+| `--jpeg-quality` | JPEG compression quality (1-100) | `80` |
+| `--camera-index` | Camera device index (webcam only) | `0` |
+| `--serial` | Device serial number (RealSense only) | (first device) |
 
 ### Data Collection
 
@@ -641,9 +705,98 @@ The Diffusion policy provides an alternative approach using diffusion models for
 ./example/diffusion/inference_client.bash --test-connection
 ```
 
+### Pi0 Policy
+
+The Pi0 (π0) policy uses a Vision-Language-Action model with PaliGemma for vision-language understanding and a separate action expert for action prediction.
+
+**Quick Start with Example Scripts:**
+
+```bash
+# Training
+./example/pi0/train.bash
+
+# Local inference
+./example/pi0/inference.bash
+
+# Client-server inference (remote GPU)
+./example/pi0/inference_server.bash  # On GPU server
+./example/pi0/inference_client.bash  # On robot machine
+```
+
+**Training Configuration:**
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--repo-id` | Dataset repo ID on HuggingFace | `jliu6718/pi0-so101-place_brick` |
+| `--local-dir` | Local dataset directory (overrides repo-id) | (none) |
+| `--output-dir` | Model output directory | `$PROJECT_ROOT/model` |
+| `--batch-size` | Training batch size | `8` |
+| `--steps` | Number of training steps | `10000` |
+| `--paligemma-variant` | Vision-language model variant | `gemma_2b` |
+| `--action-expert-variant` | Action expert model variant | `gemma_300m` |
+| `--dtype` | Training data type | `float32` |
+| `--chunk-size` | Action chunk size | `50` |
+| `--n-action-steps` | Number of action steps | `50` |
+| `--num-inference-steps` | Diffusion inference steps | `10` |
+| `--lr` | Learning rate | `2.5e-5` |
+| `--gradient-checkpointing` | Enable memory optimization | disabled |
+| `--push-to-hub` / `--no-push-to-hub` | Push model to HuggingFace | enabled |
+| `--resume` | Checkpoint path to resume from | (none) |
+| `--device` | Training device | `cuda` |
+
+**Training Examples:**
+
+```bash
+# Custom training configuration
+./example/pi0/train.bash --repo-id myuser/pi0-so101-pick_cube --steps 20000
+
+# Using --task to override task name (updates repo-id automatically)
+./example/pi0/train.bash --task pick_cube
+
+# Resume training from checkpoint
+./example/pi0/train.bash --resume /path/to/checkpoint
+
+# Enable gradient checkpointing for lower memory usage
+./example/pi0/train.bash --gradient-checkpointing
+
+# Preview configuration
+./example/pi0/train.bash --dry-run
+```
+
+**Inference Configuration:**
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--checkpoint` | Model checkpoint | `jliu6718/pi0-so101-place_brick` |
+| `--robot-port` | Robot serial port | `/dev/ttyACM0` |
+| `--camera-config` | Camera config TOML path | `config/camera.toml` |
+| `--fps` | Inference frequency | `30` |
+| `--episode` | Number of episodes | `1` |
+| `--episode-time` | Episode duration (seconds) | `60` |
+| `--reset-time` | Reset time between episodes | `60` |
+| `--display-video` | Show video feed | disabled |
+
+**Client-Server Inference:**
+
+For running inference on a remote GPU while the robot is on a different machine:
+
+```bash
+# On GPU server
+./example/pi0/inference_server.bash --checkpoint myuser/pi0-so101-task --port 8000
+
+# On GPU server using --task to override
+./example/pi0/inference_server.bash --task pick_cube
+
+# On robot machine
+./example/pi0/inference_client.bash --server-host 192.168.1.100
+
+# Test connection before starting
+./example/pi0/inference_client.bash --test-connection
+```
+
 ### Script Features Summary
 
-All example scripts in `example/`, `example/act/`, and `example/diffusion/` include:
+All example scripts in `example/`, `example/act/`, `example/diffusion/`, and `example/pi0/` include:
 
 | Feature | Description |
 |---------|-------------|
@@ -685,7 +838,9 @@ All example scripts in `example/`, `example/act/`, and `example/diffusion/` incl
 - [x] Implement Diffusion policy training pipeline
 - [x] Implement Diffusion policy local inference/evaluation pipeline
 - [x] Implement Diffusion policy client-server inference
-- [ ] Implement π0 model training pipeline
+- [x] Implement π0 model training pipeline
+- [x] Implement π0 local inference/evaluation pipeline
+- [x] Implement π0 client-server inference
 - [ ] Implement π0.5 model training pipeline
 - [ ] Add additional VLA models as needed
 - [ ] Create evaluation metrics and benchmarking scripts
@@ -695,7 +850,8 @@ All example scripts in `example/`, `example/act/`, and `example/diffusion/` incl
 - [x] Document hardware setup and calibration procedures
 - [x] Create training guides for ACT model
 - [x] Create training guides for Diffusion model
-- [ ] Create training guides for π0/π0.5 models
+- [ ] Create training guides for π0 model
+- [ ] Create training guides for π0.5 model
 - [ ] Log experimental results and hyperparameters
 - [ ] Build visualization tools for trajectories and predictions
 

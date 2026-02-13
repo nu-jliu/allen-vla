@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
 import logging
+import socket
 import threading
 import time
 from argparse import ArgumentParser
@@ -23,12 +24,16 @@ logger = logging.getLogger(__name__)
 # Shared state for the latest frame
 latest_frame = None
 frame_lock = threading.Lock()
-capture_running = True
+shutdown_event = threading.Event()
+
+# Track active client connections
+active_clients: set[socket.socket] = set()
+clients_lock = threading.Lock()
 
 
 def capture_thread(serial: str, width: int, height: int, fps: int, jpeg_quality: int) -> None:
     """Continuously capture frames from RealSense camera and encode as JPEG."""
-    global latest_frame, capture_running
+    global latest_frame
 
     pipeline = rs.pipeline()
     config = rs.config()
@@ -53,7 +58,7 @@ def capture_thread(serial: str, width: int, height: int, fps: int, jpeg_quality:
     encode_params = [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
 
     try:
-        while capture_running:
+        while not shutdown_event.is_set():
             frames = pipeline.wait_for_frames(timeout_ms=1000)
             color_frame = frames.get_color_frame()
             if not color_frame:
@@ -73,6 +78,21 @@ def capture_thread(serial: str, width: int, height: int, fps: int, jpeg_quality:
 camera_info = {}
 
 
+def shutdown_clients() -> None:
+    """Force-close all active client sockets to unblock handler threads."""
+    with clients_lock:
+        for sock in active_clients:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                sock.close()
+            except OSError:
+                pass
+        active_clients.clear()
+
+
 class MJPEGHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/stream":
@@ -83,30 +103,44 @@ class MJPEGHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
 
     def _handle_stream(self) -> None:
-        self.send_response(200)
-        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
+        client_addr = f"{self.client_address[0]}:{self.client_address[1]}"
+        client_sock = self.request
 
-        while capture_running:
-            with frame_lock:
-                frame = latest_frame
+        with clients_lock:
+            active_clients.add(client_sock)
+            count = len(active_clients)
+        logger.info(f"Client connected: {client_addr} (active: {count})")
 
-            if frame is None:
-                time.sleep(0.01)
-                continue
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
 
-            try:
-                self.wfile.write(b"--frame\r\n")
-                self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                self.wfile.write(f"Content-Length: {len(frame)}\r\n".encode())
-                self.wfile.write(b"\r\n")
-                self.wfile.write(frame)
-                self.wfile.write(b"\r\n")
-            except (BrokenPipeError, ConnectionResetError):
-                break
+            while not shutdown_event.is_set():
+                with frame_lock:
+                    frame = latest_frame
 
-            time.sleep(1.0 / camera_info.get("fps", 30))
+                if frame is None:
+                    time.sleep(0.01)
+                    continue
+
+                try:
+                    self.wfile.write(b"--frame\r\n")
+                    self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                    self.wfile.write(f"Content-Length: {len(frame)}\r\n".encode())
+                    self.wfile.write(b"\r\n")
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    break
+
+                time.sleep(1.0 / camera_info.get("fps", 30))
+        finally:
+            with clients_lock:
+                active_clients.discard(client_sock)
+                count = len(active_clients)
+            logger.info(f"Client disconnected: {client_addr} (active: {count})")
 
     def _handle_info(self) -> None:
         self.send_response(200)
@@ -119,10 +153,40 @@ class MJPEGHandler(BaseHTTPRequestHandler):
         pass
 
 
-def main() -> None:
-    global camera_info, capture_running
+def get_realsense_devices() -> list[dict[str, str]]:
+    """Query connected RealSense devices and return their info."""
+    try:
+        ctx = rs.context()
+        devices = []
+        for dev in ctx.query_devices():
+            devices.append({
+                "serial": dev.get_info(rs.camera_info.serial_number),
+                "name": dev.get_info(rs.camera_info.name),
+            })
+        return devices
+    except Exception:
+        return []
 
-    parser = ArgumentParser(description="RealSense MJPEG streaming server")
+
+def build_epilog() -> str:
+    """Build help epilog with available RealSense devices."""
+    devices = get_realsense_devices()
+    if not devices:
+        return "available RealSense devices: none detected"
+    lines = ["available RealSense devices:"]
+    for dev in devices:
+        lines.append(f"  {dev['serial']}  ({dev['name']})")
+    return "\n".join(lines)
+
+
+def main() -> None:
+    global camera_info
+
+    parser = ArgumentParser(
+        description="RealSense MJPEG streaming server",
+        epilog=build_epilog(),
+        formatter_class=lambda prog: __import__("argparse").RawDescriptionHelpFormatter(prog),
+    )
     parser.add_argument("--port", type=int, default=8080, help="HTTP server port (default: 8080)")
     parser.add_argument("--serial", type=str, default="", help="RealSense serial number (default: first device)")
     parser.add_argument("--width", type=int, default=640, help="Camera width (default: 640)")
@@ -148,6 +212,7 @@ def main() -> None:
     logger.info("First frame captured")
 
     server = ThreadingHTTPServer(("0.0.0.0", args.port), MJPEGHandler)
+    server.daemon_threads = True
     logger.info(f"MJPEG server running on http://0.0.0.0:{args.port}")
     logger.info(f"  Stream: http://localhost:{args.port}/stream")
     logger.info(f"  Info:   http://localhost:{args.port}/info")
@@ -156,7 +221,8 @@ def main() -> None:
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
-        capture_running = False
+        shutdown_event.set()
+        shutdown_clients()
         server.shutdown()
 
 

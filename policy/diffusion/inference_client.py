@@ -17,13 +17,15 @@ import logging
 import pickle
 import socket
 import struct
+import threading
 import time
+import urllib.request
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
+import cv2
 import numpy as np
 
 from lerobot.robots.so101_follower import SO101FollowerConfig
 from lerobot.robots import make_robot_from_config
-from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 from lerobot.utils.robot_utils import precise_sleep
 
 from utils import setup_logging, load_camera_config, query_camera_info
@@ -58,6 +60,59 @@ def send_message(conn: socket.socket, data: bytes) -> None:
     conn.sendall(msg)
 
 
+def camera_subscribe_thread(
+    host: str,
+    port: int,
+    camera_name: str,
+    camera_frames: dict,
+    image_lock: threading.Lock,
+    running_flag: callable,
+) -> None:
+    """Subscribe to an MJPEG stream and update the shared frame dict.
+
+    :param host: Camera server hostname
+    :param port: Camera server port
+    :param camera_name: Name key for this camera in camera_frames
+    :param camera_frames: Shared dict mapping camera name -> latest frame
+    :param image_lock: Lock protecting camera_frames
+    :param running_flag: Callable returning bool, False to stop
+    """
+    url = f"http://{host}:{port}/stream"
+    logger.info(f"Subscribing to camera '{camera_name}' at {url}")
+
+    while running_flag():
+        try:
+            req = urllib.request.Request(url)
+            stream = urllib.request.urlopen(req, timeout=5)
+            buf = b""
+
+            while running_flag():
+                chunk = stream.read(4096)
+                if not chunk:
+                    break
+                buf += chunk
+
+                # Find complete JPEG frames (SOI: 0xFFD8, EOI: 0xFFD9)
+                while True:
+                    start = buf.find(b"\xff\xd8")
+                    end = buf.find(b"\xff\xd9")
+                    if start == -1 or end == -1 or end < start:
+                        break
+                    jpeg = buf[start : end + 2]
+                    buf = buf[end + 2 :]
+                    frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        with image_lock:
+                            camera_frames[camera_name] = frame
+
+        except Exception as e:
+            if running_flag():
+                logger.warning(f"Camera '{camera_name}' stream error: {e}, reconnecting...")
+                time.sleep(1.0)
+
+    logger.info(f"Camera '{camera_name}' subscribe thread stopped")
+
+
 class InferenceClient:
     """Client that connects to robot and inference server."""
 
@@ -76,6 +131,13 @@ class InferenceClient:
         self.robot = None
         self.server_conn: socket.socket | None = None
         self.initial_position: dict[str, float] | None = None
+
+        # Camera subscription state
+        self.camera_frames: dict = {}
+        self.image_lock = threading.Lock()
+        self.camera_threads: list = []
+        self.camera_names: list = []
+        self.running: bool = True
 
         # Observation feature names (for SO101)
         self.state_names = [
@@ -101,28 +163,10 @@ class InferenceClient:
         """
         logger.info("Connecting to robot...")
 
-        # Load camera configuration from TOML and build stream URLs
-        camera_configs = load_camera_config(camera_config_path)
-        cameras = {}
-        for cam in camera_configs:
-            name = cam["name"]
-            host = cam["host"]
-            cam_port = cam["port"]
-            info = query_camera_info(host, cam_port)
-            stream_url = f"http://{host}:{cam_port}/stream"
-            cameras[name] = OpenCVCameraConfig(
-                index_or_path=stream_url,
-                width=info["width"],
-                height=info["height"],
-                fps=info["fps"],
-            )
-            logger.info(f"  Camera '{name}': {stream_url} ({info['width']}x{info['height']} @ {info['fps']}fps)")
-
-        # Create robot config
+        # Create robot config without cameras (cameras handled by subscription threads)
         robot_config = SO101FollowerConfig(
             port=robot_port,
             id=robot_id,
-            cameras=cameras,
         )
 
         # Create and connect robot
@@ -136,6 +180,34 @@ class InferenceClient:
 
         logger.info(f"Robot connected on {robot_port}")
         logger.info(f"Robot ID: {robot_id}")
+
+        # Load camera configuration and start subscription threads
+        camera_configs = load_camera_config(camera_config_path)
+        for cam in camera_configs:
+            name = cam["name"]
+            host = cam["host"]
+            cam_port = cam["port"]
+            info = query_camera_info(host, cam_port)
+            logger.info(f"  Camera '{name}': {host}:{cam_port} ({info['width']}x{info['height']} @ {info['fps']}fps)")
+            self.camera_names.append(name)
+            t = threading.Thread(
+                target=camera_subscribe_thread,
+                args=(host, cam_port, name, self.camera_frames, self.image_lock, lambda: self.running),
+                daemon=True,
+            )
+            t.start()
+            self.camera_threads.append(t)
+
+        # Wait for at least one frame from each camera
+        logger.info("Waiting for frames from all cameras...")
+        while True:
+            with self.image_lock:
+                have_all = all(name in self.camera_frames for name in self.camera_names)
+            if have_all:
+                break
+            time.sleep(0.1)
+        logger.info("All cameras streaming")
+
         logger.info(f"Camera config: {camera_config_path}")
 
     def connect_server(self) -> None:
@@ -158,6 +230,9 @@ class InferenceClient:
 
     def disconnect(self) -> None:
         """Disconnect from robot and server."""
+        # Stop camera subscription threads
+        self.running = False
+
         if self.robot is not None:
             try:
                 # Move robot to initial position before disconnecting
@@ -187,14 +262,14 @@ class InferenceClient:
             self.server_conn = None
 
     def get_observation(self) -> dict[str, np.ndarray]:
-        """Get observation from the robot.
+        """Get observation from the robot and camera subscription threads.
 
         :return: Dictionary with observation.state and observation.images.{camera_name} per camera
         """
         if self.robot is None:
             raise RuntimeError("Robot not connected")
 
-        # Get raw observation from robot
+        # Get joint state from robot
         raw_obs = self.robot.get_observation()
 
         # Extract state (joint positions)
@@ -208,13 +283,11 @@ class InferenceClient:
             "observation.state": state,
         }
 
-        # Extract all camera images (non-state keys)
-        for key in raw_obs:
-            if key not in self.state_names:
-                image = raw_obs[key]
-                if not isinstance(image, np.ndarray):
-                    image = np.array(image)
-                observation[f"observation.images.{key}"] = image
+        # Grab latest camera frames from subscription threads
+        with self.image_lock:
+            for name in self.camera_names:
+                if name in self.camera_frames:
+                    observation[f"observation.images.{name}"] = self.camera_frames[name].copy()
 
         return observation
 

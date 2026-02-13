@@ -25,6 +25,8 @@ from utils import setup_logging, load_camera_config, query_camera_info
 setup_logging()
 logger = logging.getLogger(__name__)
 
+POLICY_TYPE = "pi0"
+
 
 def parse_args() -> Namespace:
     """Parse command line arguments for inference.
@@ -44,7 +46,6 @@ Examples:
     --robot-port /dev/ttyACM0 \\
     --episode 10 \\
     --username my_username \\
-    --policy-type pi0 \\
     --robot-type so101 \\
     --task pick_place
 
@@ -57,7 +58,6 @@ Examples:
     --camera-config config/camera.toml \\
     --episode 5 \\
     --username username \\
-    --policy-type pi0 \\
     --robot-type so101 \\
     --task pick_place \\
     --push-to-hub
@@ -83,12 +83,6 @@ Examples:
         type=str,
         required=True,
         help="Hugging Face username",
-    )
-    required.add_argument(
-        "--policy-type",
-        type=str,
-        required=True,
-        help="Policy type (e.g., act, diffusion, pi0)",
     )
     required.add_argument(
         "--robot-type",
@@ -214,11 +208,10 @@ def create_record_config(args: Namespace) -> RecordConfig:
     robot_id = args.robot_id
     camera_config_path = args.camera_config
     username = args.username
-    policy_type = args.policy_type
     robot_type = args.robot_type
     task = args.task
     # Construct repo_id as {username}/eval_{policy}-{robot}-{task}
-    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{task}"
+    repo_id = f"{username}/eval_{POLICY_TYPE}-{robot_type}-{task}"
     task_description = args.task_description
     root = args.root
     fps = args.fps
@@ -306,11 +299,10 @@ def main():
     task_description = args.task_description
     push_to_hub = args.push_to_hub
     username = args.username
-    policy_type = args.policy_type
     robot_type = args.robot_type
     task = args.task
     # Construct repo_id as {username}/eval_{policy}-{robot}-{task}
-    repo_id = f"{username}/eval_{policy_type}-{robot_type}-{task}"
+    repo_id = f"{username}/eval_{POLICY_TYPE}-{robot_type}-{task}"
 
     logger.info("=" * 60)
     logger.info("PI0 Policy Inference for SO101 Robot")

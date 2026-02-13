@@ -33,6 +33,29 @@ print_banner() {
     echo -e "${NC}"
 }
 
+# List connected RealSense devices
+list_realsense_devices() {
+    if command -v uv &> /dev/null; then
+        local devices
+        devices=$(cd "${PROJECT_ROOT}" && uv run python -c "
+import pyrealsense2 as rs
+ctx = rs.context()
+devs = ctx.query_devices()
+if not devs:
+    print('  (none detected)')
+for d in devs:
+    print(f'  {d.get_info(rs.camera_info.serial_number)}  ({d.get_info(rs.camera_info.name)})')
+" 2>/dev/null)
+        if [[ -n "${devices}" ]]; then
+            echo "${devices}"
+        else
+            echo "  (none detected)"
+        fi
+    else
+        echo "  (uv not installed, cannot query devices)"
+    fi
+}
+
 # Print usage
 print_usage() {
     echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
@@ -46,6 +69,9 @@ print_usage() {
     echo "  --height HEIGHT         Camera height (default: 480)"
     echo "  --fps FPS               Target FPS (default: 30)"
     echo "  --jpeg-quality QUALITY  JPEG quality 1-100 (default: 80)"
+    echo ""
+    echo -e "${BLUE}Available RealSense devices:${NC}"
+    list_realsense_devices
     echo ""
     echo -e "${BLUE}Examples:${NC}"
     echo "  $0"

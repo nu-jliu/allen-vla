@@ -1,7 +1,7 @@
 #!/bin/bash
 # Training Script for Diffusion Policy
-# Dataset/Model repo ID format: {username}/{policy}-{robot}-{task}
-# Example: jliu6718/diffusion-so101-place_brick
+# Dataset repo ID format: {username}/{robot}-{task}
+# Example: jliu6718/so101-place_brick
 
 set -e
 
@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Default configuration
-REPO_ID="jliu6718/diffusion-so101-place_brick"
+REPO_ID="jliu6718/so101-place_brick"
 LOCAL_DIR=""
 OUTPUT_DIR="${PROJECT_ROOT}/model"
 BATCH_SIZE="32"
@@ -39,9 +39,8 @@ LOG_FREQ="250"
 
 # For push to hub
 USERNAME="jliu6718"
-POLICY_TYPE="diffusion"
 ROBOT_TYPE="so101"
-TASK="place_brick"
+TASK=""
 
 # Print banner
 print_banner() {
@@ -59,10 +58,10 @@ print_usage() {
     echo -e "${BLUE}Options:${NC}"
     echo "  -h, --help                Show this help message"
     echo "  --dry-run                 Show configuration without running"
-    echo "  --task TASK               Task name (updates repo ID suffix)"
+    echo "  --task TASK               Task name (required, updates repo ID suffix)"
     echo ""
     echo -e "${BLUE}Dataset Options:${NC}"
-    echo "  --repo-id ID              Dataset repo ID (default: jliu6718/diffusion-so101-place_brick)"
+    echo "  --repo-id ID              Dataset repo ID (default: jliu6718/so101-place_brick)"
     echo "  --local-dir DIR           Local dataset directory (overrides --repo-id)"
     echo "  --force-redownload        Force re-download dataset (default)"
     echo "  --no-force-redownload     Don't force re-download dataset"
@@ -87,11 +86,10 @@ print_usage() {
     echo "  --push-to-hub             Push model to HuggingFace Hub (default)"
     echo "  --no-push-to-hub          Don't push to HuggingFace Hub"
     echo "  --username USER           HuggingFace username (default: jliu6718)"
-    echo "  --policy-type TYPE        Policy type (default: diffusion)"
     echo "  --robot-type TYPE         Robot type (default: so101)"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
-    echo "  $0 --repo-id myuser/diffusion-so101-pick_cube --steps 50000"
+    echo "  $0 --repo-id myuser/so101-pick_cube --steps 50000"
     echo "  $0 --task pick_cube"
     echo ""
     echo -e "${BLUE}Resume Training:${NC}"
@@ -136,7 +134,7 @@ print_config() {
     echo -e "  ${YELLOW}Push to Hub:${NC}     ${PUSH_TO_HUB}"
     if [[ "${PUSH_TO_HUB}" == "true" ]]; then
         echo -e "  ${YELLOW}Username:${NC}        ${USERNAME}"
-        echo -e "  ${YELLOW}Model Repo:${NC}      ${USERNAME}/${POLICY_TYPE}-${ROBOT_TYPE}-${TASK}"
+        echo -e "  ${YELLOW}Model Repo:${NC}      ${USERNAME}/diffusion-${ROBOT_TYPE}-${TASK}"
     fi
     echo ""
 
@@ -248,20 +246,14 @@ check_dependencies() {
 check_hf_auth() {
     if [[ "${PUSH_TO_HUB}" == "true" ]]; then
         echo -e "${BLUE}Checking HuggingFace authentication...${NC}"
-        if command -v huggingface-cli &> /dev/null; then
-            if huggingface-cli whoami &> /dev/null; then
-                HF_USER=$(huggingface-cli whoami 2>/dev/null | head -1)
-                echo -e "  ${GREEN}✓${NC} Logged in as: ${HF_USER}"
-            else
-                echo -e "  ${YELLOW}⚠${NC} Not logged in to HuggingFace Hub"
-                echo "      Run: huggingface-cli login"
-                echo "      Or set HF_TOKEN environment variable"
-            fi
+        if uv run hf auth whoami &> /dev/null; then
+            HF_USER=$(uv run hf auth whoami 2>/dev/null | head -1)
+            echo -e "  ${GREEN}✓${NC} Logged in as: ${HF_USER}"
         elif [[ -n "${HF_TOKEN}" ]]; then
             echo -e "  ${GREEN}✓${NC} HF_TOKEN environment variable is set"
         else
-            echo -e "  ${YELLOW}⚠${NC} Cannot verify HuggingFace authentication"
-            echo "      Run: huggingface-cli login"
+            echo -e "  ${YELLOW}⚠${NC} Not logged in to HuggingFace Hub"
+            echo "      Run: uv run hf auth login"
             echo "      Or set HF_TOKEN environment variable"
         fi
         echo ""
@@ -429,14 +421,6 @@ main() {
                 USERNAME="$2"
                 shift 2
                 ;;
-            --policy-type)
-                if [[ -z "$2" || "$2" == --* ]]; then
-                    echo -e "${RED}Error:${NC} --policy-type requires a value"
-                    exit 1
-                fi
-                POLICY_TYPE="$2"
-                shift 2
-                ;;
             --robot-type)
                 if [[ -z "$2" || "$2" == --* ]]; then
                     echo -e "${RED}Error:${NC} --robot-type requires a value"
@@ -452,6 +436,12 @@ main() {
                 ;;
         esac
     done
+
+    if [[ -z "${TASK}" ]]; then
+        echo -e "${RED}Error:${NC} --task is required"
+        echo "  Example: $0 --task place_brick"
+        exit 1
+    fi
 
     # If task is specified, update REPO_ID to use it
     if [[ -n "${TASK}" && "${REPO_ID}" == *-* ]]; then
@@ -478,7 +468,7 @@ main() {
     # Build optional flags
     PUSH_FLAG=""
     if [[ "${PUSH_TO_HUB}" == "true" ]]; then
-        PUSH_FLAG="--push --username ${USERNAME} --policy-type ${POLICY_TYPE} --robot-type ${ROBOT_TYPE} --task ${TASK}"
+        PUSH_FLAG="--push --username ${USERNAME} --robot-type ${ROBOT_TYPE}"
     fi
 
     RESUME_FLAG=""
@@ -495,7 +485,7 @@ main() {
     echo -e "${CYAN}Training ${STEPS} steps with batch size ${BATCH_SIZE}${NC}"
     echo -e "${CYAN}Model will be saved to: ${OUTPUT_DIR}${NC}"
     if [[ "${PUSH_TO_HUB}" == "true" ]]; then
-        echo -e "${CYAN}Model will be pushed to: ${USERNAME}/${POLICY_TYPE}-${ROBOT_TYPE}-${TASK}${NC}"
+        echo -e "${CYAN}Model will be pushed to: ${USERNAME}/diffusion-${ROBOT_TYPE}-${TASK}${NC}"
     fi
     echo -e "${CYAN}Press Ctrl+C to interrupt (checkpoint will be saved)${NC}"
     echo ""
@@ -504,6 +494,7 @@ main() {
     exec uv run policy/diffusion/train.py \
         ${DATASET_ARG} \
         --output-dir "${OUTPUT_DIR}" \
+        --task "${TASK}" \
         --batch-size "${BATCH_SIZE}" \
         --steps "${STEPS}" \
         --horizon "${HORIZON}" \

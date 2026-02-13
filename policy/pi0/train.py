@@ -48,6 +48,8 @@ from utils import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
+POLICY_TYPE = "pi0"
+
 
 def clear_hub_cache_for_repo(repo_id: str) -> None:
     """Clear the HuggingFace Hub cache for a specific dataset repository.
@@ -120,6 +122,12 @@ def parse_args() -> Namespace:
         required=True,
         help="Directory to save checkpoints and logs",
     )
+    required.add_argument(
+        "--task",
+        type=str,
+        required=True,
+        help="Task name (e.g., place_brick, pick_cube)",
+    )
 
     # Dataset source (mutually exclusive)
     dataset_group = parser.add_argument_group(
@@ -131,7 +139,7 @@ def parse_args() -> Namespace:
     dataset_source.add_argument(
         "--repo-id",
         type=str,
-        help="HuggingFace Hub dataset repo ID (e.g., username/policy-robot-task)",
+        help="HuggingFace Hub dataset repo ID (e.g., username/robot-task)",
     )
     dataset_source.add_argument(
         "--local-dir",
@@ -156,21 +164,10 @@ def parse_args() -> Namespace:
         help="Hugging Face username (required with --local-dir and --push)",
     )
     push_group.add_argument(
-        "--policy-type",
-        type=str,
-        help="Policy type e.g. act, diffusion, pi0 (required with --local-dir and --push)",
-    )
-    push_group.add_argument(
         "--robot-type",
         type=str,
         help="Robot type e.g. so101 (required with --local-dir and --push)",
     )
-    push_group.add_argument(
-        "--task",
-        type=str,
-        help="Task name for the model repo (required with --local-dir and --push)",
-    )
-
     # Training hyperparameters
     training = parser.add_argument_group("training hyperparameters")
     training.add_argument(
@@ -347,7 +344,6 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     repo_id = args.repo_id
     local_dir = args.local_dir
     username = args.username
-    policy_type = args.policy_type
     robot_type = args.robot_type
     task = args.task
     output_dir = args.output_dir
@@ -376,14 +372,18 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
     # Determine policy_repo_id for pushing
     if push:
         if repo_id is not None:
-            # Using HuggingFace dataset, use same repo_id for model
-            policy_repo_id = repo_id
-        elif all([username, policy_type, robot_type, task]):
+            # Derive model repo by prepending policy type to dataset repo
+            parts = repo_id.split("/", 1)
+            if parts[1].startswith(f"{POLICY_TYPE}-"):
+                policy_repo_id = repo_id  # backward compat: already prefixed
+            else:
+                policy_repo_id = f"{parts[0]}/{POLICY_TYPE}-{parts[1]}"
+        elif all([username, robot_type, task]):
             # Using local dataset with push, construct repo_id from components
-            policy_repo_id = f"{username}/{policy_type}-{robot_type}-{task}"
+            policy_repo_id = f"{username}/{POLICY_TYPE}-{robot_type}-{task}"
         else:
             raise ValueError(
-                "When using --push with --local-dir, you must also specify --username, --policy-type, --robot-type, and --task"
+                "When using --push with --local-dir, you must also specify --username, --robot-type, and --task"
             )
     else:
         policy_repo_id = None
@@ -416,8 +416,8 @@ def build_training_config(args: Namespace) -> TrainPipelineConfig:
         optimizer_lr=lr,
         image_resolution=tuple(image_resolution),
         gradient_checkpointing=gradient_checkpointing,
-        warmup_steps=warmup_steps,
-        decay_steps=decay_steps,
+        scheduler_warmup_steps=warmup_steps,
+        scheduler_decay_steps=decay_steps,
         push_to_hub=push,
         repo_id=policy_repo_id if push else None,
     )

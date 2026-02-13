@@ -24,7 +24,7 @@ uv run python policy/act/train.py --repo-id your_username/your_dataset --output-
 
 ### Dataset Source (mutually exclusive, one required)
 
-- `--repo-id`: HuggingFace Hub dataset repo ID (e.g., `username/act-so101-pick_place`)
+- `--repo-id`: HuggingFace Hub dataset repo ID (e.g., `username/so101-pick_place`)
 - `--local-dir`: Path to local dataset directory
 - `--revision`: Dataset revision/branch to use (default: `main`)
 
@@ -54,7 +54,6 @@ uv run python policy/act/train.py --repo-id your_username/your_dataset --output-
 Required when using `--local-dir` with `--push`:
 
 - `--username`: HuggingFace username
-- `--policy-type`: Policy type (e.g., `act`)
 - `--robot-type`: Robot type (e.g., `so101`)
 - `--task`: Task name for the model repo
 
@@ -79,11 +78,10 @@ python policy/act/train.py \
 
 ```bash
 python policy/act/train.py \
-  --local-dir ./data/act-so101-pick_place \
+  --local-dir ./data/so101-pick_place \
   --output-dir ./outputs/act_experiment1 \
   --push \
   --username my_username \
-  --policy-type act \
   --robot-type so101 \
   --task pick_place
 ```
@@ -116,7 +114,6 @@ python policy/act/inference.py \
   --checkpoint ./outputs/act_training/pretrained_model \
   --robot-port /dev/ttyACM0 \
   --username my_username \
-  --policy-type act \
   --robot-type so101 \
   --task pick_place
 ```
@@ -128,7 +125,6 @@ uv run python policy/act/inference.py \
   --checkpoint ./outputs/act_training/pretrained_model \
   --robot-port /dev/ttyACM0 \
   --username my_username \
-  --policy-type act \
   --robot-type so101 \
   --task pick_place
 ```
@@ -142,7 +138,6 @@ The evaluation repo ID is automatically constructed as `{username}/eval_{policy-
 - `--checkpoint`: Path to trained policy checkpoint or HuggingFace repo ID
 - `--robot-port`: Robot port (e.g., `/dev/ttyACM0`)
 - `--username`: HuggingFace username
-- `--policy-type`: Policy type (e.g., `act`)
 - `--robot-type`: Robot type (e.g., `so101`)
 - `--task`: Task name for the evaluation dataset (e.g., `pick_place`)
 
@@ -182,7 +177,6 @@ python policy/act/inference.py \
   --camera-config config/camera.toml \
   --episode 5 \
   --username username \
-  --policy-type act \
   --robot-type so101 \
   --task pick_place \
   --push-to-hub

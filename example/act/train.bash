@@ -1,7 +1,7 @@
 #!/bin/bash
 # Training Script for ACT Policy
-# Dataset/Model repo ID format: {username}/{policy}-{robot}-{task}
-# Example: jliu6718/act-so101-place_brick
+# Dataset repo ID format: {username}/{robot}-{task}
+# Example: jliu6718/so101-place_brick
 
 set -e
 
@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Default configuration
-REPO_ID="jliu6718/act-so101-place_brick"
+REPO_ID="jliu6718/so101-place_brick"
 OUTPUT_DIR="${PROJECT_ROOT}/model"
 BATCH_SIZE="32"
 STEPS="10000"
@@ -45,8 +45,8 @@ print_usage() {
     echo -e "${BLUE}Options:${NC}"
     echo "  -h, --help              Show this help message"
     echo "  --dry-run               Show configuration without running"
-    echo "  --task TASK             Task name (updates repo ID suffix)"
-    echo "  --repo-id ID            Dataset/Model repo ID (default: jliu6718/act-so101-place_brick)"
+    echo "  --task TASK             Task name (required, updates repo ID suffix)"
+    echo "  --repo-id ID            Dataset repo ID (default: jliu6718/so101-place_brick)"
     echo "  --output-dir DIR        Output directory for checkpoints (default: \$PROJECT_ROOT/model)"
     echo "  --batch-size N          Training batch size (default: 32)"
     echo "  --steps N               Number of training steps (default: 10000)"
@@ -59,7 +59,7 @@ print_usage() {
     echo "  --no-force-redownload   Don't force re-download dataset"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
-    echo "  $0 --repo-id myuser/act-so101-pick_cube --steps 20000"
+    echo "  $0 --repo-id myuser/so101-pick_cube --steps 20000"
     echo "  $0 --task pick_cube"
     echo ""
     echo -e "${BLUE}Resume Training:${NC}"
@@ -185,20 +185,14 @@ check_dependencies() {
 check_hf_auth() {
     if [[ "${PUSH_TO_HUB}" == "true" ]]; then
         echo -e "${BLUE}Checking HuggingFace authentication...${NC}"
-        if command -v huggingface-cli &> /dev/null; then
-            if huggingface-cli whoami &> /dev/null; then
-                HF_USER=$(huggingface-cli whoami 2>/dev/null | head -1)
-                echo -e "  ${GREEN}✓${NC} Logged in as: ${HF_USER}"
-            else
-                echo -e "  ${YELLOW}⚠${NC} Not logged in to HuggingFace Hub"
-                echo "      Run: huggingface-cli login"
-                echo "      Or set HF_TOKEN environment variable"
-            fi
+        if uv run hf auth whoami &> /dev/null; then
+            HF_USER=$(uv run hf auth whoami 2>/dev/null | head -1)
+            echo -e "  ${GREEN}✓${NC} Logged in as: ${HF_USER}"
         elif [[ -n "${HF_TOKEN}" ]]; then
             echo -e "  ${GREEN}✓${NC} HF_TOKEN environment variable is set"
         else
-            echo -e "  ${YELLOW}⚠${NC} Cannot verify HuggingFace authentication"
-            echo "      Run: huggingface-cli login"
+            echo -e "  ${YELLOW}⚠${NC} Not logged in to HuggingFace Hub"
+            echo "      Run: uv run hf auth login"
             echo "      Or set HF_TOKEN environment variable"
         fi
         echo ""
@@ -309,6 +303,12 @@ main() {
         esac
     done
 
+    if [[ -z "${TASK}" ]]; then
+        echo -e "${RED}Error:${NC} --task is required"
+        echo "  Example: $0 --task place_brick"
+        exit 1
+    fi
+
     # If task is specified, update REPO_ID to use it
     if [[ -n "${TASK}" ]]; then
         # Extract username and policy-robot from REPO_ID, replace task
@@ -353,6 +353,7 @@ main() {
     exec uv run policy/act/train.py \
         --repo-id "${REPO_ID}" \
         --output-dir "${OUTPUT_DIR}" \
+        --task "${TASK}" \
         --batch-size "${BATCH_SIZE}" \
         --steps "${STEPS}" \
         --seed "${SEED}" \

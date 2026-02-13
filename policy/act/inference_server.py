@@ -20,8 +20,11 @@ import threading
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
 from typing import Any
 
+print("[startup] Importing numpy...", flush=True)
 import numpy as np
+print("[startup] Importing torch...", flush=True)
 import torch
+print("[startup] Importing lerobot...", flush=True)
 
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
@@ -33,6 +36,7 @@ from lerobot.utils.utils import get_safe_torch_device
 
 from utils import setup_logging
 
+print("[startup] Imports complete", flush=True)
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -71,8 +75,8 @@ class InferenceServer:
     def __init__(
         self,
         checkpoint: str,
+        task: str,
         device: str = "cuda",
-        task: str = "Policy evaluation",
     ):
         """Initialize the inference server.
 
@@ -95,21 +99,29 @@ class InferenceServer:
     def load_policy(self) -> None:
         """Load the policy and create preprocessor/postprocessor pipelines."""
         logger.info(f"Loading policy from {self.checkpoint}...")
+        logger.info("Step 1/4: Loading policy config...")
 
         # Load policy config (following inference_act.py pattern)
         policy_cfg = PreTrainedConfig.from_pretrained(self.checkpoint)
         policy_cfg.pretrained_path = self.checkpoint
         policy_cfg.device = str(self.device)
+        logger.info("Step 1/4: Policy config loaded")
 
         # Load dataset metadata for features and stats
+        logger.info("Step 2/4: Loading dataset metadata...")
         ds_meta = self._load_dataset_metadata(policy_cfg)
+        logger.info("Step 2/4: Dataset metadata loaded")
 
         # Create policy and processors
+        logger.info("Step 3/4: Creating policy model...")
         if ds_meta is not None:
             self.policy = make_policy(policy_cfg, ds_meta=ds_meta)
             self.ds_features = ds_meta.features
 
+            logger.info("Step 3/4: Policy model created")
+
             # Create preprocessor and postprocessor
+            logger.info("Step 4/4: Creating preprocessor/postprocessor...")
             self.preprocessor, self.postprocessor = make_pre_post_processors(
                 policy_cfg=policy_cfg,
                 pretrained_path=self.checkpoint,
@@ -121,6 +133,8 @@ class InferenceServer:
         else:
             # Fallback: load policy directly without dataset metadata
             self._load_policy_fallback(policy_cfg)
+
+        logger.info("Step 4/4: Preprocessor/postprocessor created")
 
         self.policy.eval()
         logger.info("Policy loaded successfully")
@@ -387,6 +401,12 @@ Examples:
         required=True,
         help="Path to trained policy checkpoint or HuggingFace repo ID",
     )
+    required.add_argument(
+        "--task",
+        type=str,
+        required=True,
+        help="Task name (e.g., place_brick, pick_cube)",
+    )
 
     # Server configuration
     server = parser.add_argument_group("server configuration")
@@ -411,18 +431,12 @@ Examples:
         default="cuda",
         help="Device to run inference on (default: cuda)",
     )
-    inference.add_argument(
-        "--task",
-        type=str,
-        default="Policy evaluation",
-        help="Task description for inference",
-    )
-
     return parser.parse_args()
 
 
 def main():
     """Main entry point."""
+    logger.info("Parsing arguments...")
     args = parse_args()
 
     # Extract args to local variables
@@ -432,10 +446,11 @@ def main():
     host = args.host
     port = args.port
 
+    logger.info("Creating inference server...")
     server = InferenceServer(
         checkpoint=checkpoint,
-        device=device,
         task=task,
+        device=device,
     )
 
     server.start(host=host, port=port)
